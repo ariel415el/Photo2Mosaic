@@ -7,7 +7,38 @@ from scipy import ndimage
 from scipy.ndimage import binary_dilation, binary_erosion
 from tqdm import tqdm
 
-from utils import plot_vornoi_cells, get_edge_map, render_tiles, get_rotation_matrix, plot_vector_field
+from utils import plot_vornoi_cells, render_tiles, get_rotation_matrix, plot_vector_field
+
+
+def get_edges_map(image):
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Blur the image for better edge detection
+    img_blur = cv2.GaussianBlur(img_gray, (7, 7), 0)
+    # mask = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=1, ksize=5)
+    mask = cv2.Canny(image=img_blur, threshold1=100, threshold2=200)
+
+    mask[mask==255] = 1
+
+    return mask
+
+def normalize_directions(vectors):
+    # Normalize vector filed
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    vectors /= norms
+
+    # Replace zero vectors with random directions
+    nans = norms[:, 0] == 0
+    random_direction = np.random.rand(nans.sum(), 2)
+    random_direction /= np.linalg.norm(random_direction, axis=1, keepdims=True)
+    vectors[nans] = random_direction
+
+    return vectors
+
+def get_avoidance_map(edges_map):
+    # edges_map = binary_dilation(edges_map, iterations=1).astype(np.uint8)
+    # mask = binary_erosion(mask, iterations=1).astype(np.uint8)
+
+    return edges_map
 
 
 def get_vornoi_cells(points, oritentations, direction_field, avoidance_map):
@@ -50,51 +81,31 @@ def get_vornoi_cells(points, oritentations, direction_field, avoidance_map):
 
     # update orientations using vector field
     oritentations = direction_field[centers[:,0].astype(int), centers[:, 1].astype(int)]
+    oritentations = normalize_directions(oritentations)
 
     return vornoi_map, centers, oritentations
 
 
-def create_direction_field(image):
+def create_direction_field(edge_map):
     """
-    Create a direction vector field from edges in the image.
+    Create a direction vector field from edges in the edges_map.
     Compute edges map its distance transform and then its gradient map.
     Normalize gradient vector to have unit norm.
     """
 
-    edge_map = get_edge_map(image)
     dist_transform = ndimage.distance_transform_edt(edge_map == 0)
 
     direction_field = np.stack(np.gradient(dist_transform), axis=2)
 
-    # Normalize vector filed
-    norms = np.linalg.norm(direction_field, axis=2, keepdims=True)
-    direction_field /= norms
-
-    # Replace zero vectors with random directions
-    nans = norms[..., 0] == 0
-    random_direction = np.random.rand(nans.sum(), 2)
-    random_direction /= np.linalg.norm(random_direction, axis=1, keepdims=True)
-    direction_field[nans] = random_direction
-
     return direction_field
 
-def get_avoidance_map(image):
-    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Blur the image for better edge detection
-    img_blur = cv2.GaussianBlur(img_gray, (7, 7), 0)
-    # mask = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=1, ksize=5)
-    mask = cv2.Canny(image=img_blur, threshold1=100, threshold2=200)
 
-    mask[mask==255] = 1
-
-    # mask = binary_dilation(mask, iterations=1).astype(np.uint8)
-    # mask = binary_erosion(mask, iterations=1).astype(np.uint8)
-
-    return mask
-
-def get_random_state(n_tiles, h, w):
+def get_initial_state(n_tiles, h, w):
     """Sample random vornoi cell centers and directions"""
-    points = np.stack([np.random.random(n_tiles) * h, np.random.random(n_tiles) * w], axis=1).astype(np.uint64)
+    # points = np.stack([np.random.random(n_tiles) * h, np.random.random(n_tiles) * w], axis=1).astype(np.uint64)
+    s = int(np.ceil(np.sqrt(n_tiles)))
+    y, x = np.meshgrid(np.linspace(1, h - 1, s), np.linspace(1, w - 1, s))
+    points = np.stack([y.flatten(), x.flatten()], axis=1).astype(np.uint64)[:n_tiles]
     # oritentations = np.ones((n_tiles, 2))
     oritentations = np.random.rand(n_tiles, 2)
     oritentations /= np.linalg.norm(oritentations, axis=1, keepdims=True)
@@ -108,17 +119,20 @@ def create_mosaic(reference_image, outputs_dir):
     h, w, _ = reference_image.shape
     tile_size = int(delta * np.sqrt(h * w / n_tiles))
 
-    direction_field = create_direction_field(reference_image)
+    edge_map = get_edges_map(reference_image)
 
-    avoidance_map = get_avoidance_map(reference_image)
+    avoidance_map = get_avoidance_map(edge_map)
+
+    direction_field = create_direction_field(edge_map)
 
     plot_vector_field(reference_image, direction_field, path=os.path.join(outputs_dir, 'VectorField.png'))
+
     from matplotlib import pyplot as plt
     plt.imshow(cv2.cvtColor(avoidance_map * 255, cv2.COLOR_GRAY2RGB))
     plt.savefig(os.path.join(outputs_dir, 'EdgeMap.png'))
     plt.clf()
 
-    points, oritentations = get_random_state(n_tiles, h, w)
+    points, oritentations = get_initial_state(n_tiles, h, w)
 
     losses = []
     for i in tqdm(range(n_iters)):
@@ -133,14 +147,14 @@ def create_mosaic(reference_image, outputs_dir):
 
 
 if __name__ == '__main__':
-    # img_path = '../images/YingYang.png'
+    img_path = '../images/YingYang.png'
     # img_path = '../images/Elon.jpg'
-    img_path = '../images/Elat1.jpg'
+    # img_path = '../images/Elat1.jpg'
     # img_path = '../images/diagonal.png'
     device = torch.device("cpu")
-    resize = 256
-    n_tiles = 3000
-    delta = 0.7  # Direction field variation level
+    resize = 512
+    n_tiles = 2000
+    delta = 0.75  # Direction field variation level
     n_iters = 20
 
     im_name = os.path.basename(os.path.splitext(img_path)[0])

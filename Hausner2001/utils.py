@@ -6,13 +6,12 @@ from skimage import color
 from scipy.ndimage.morphology import binary_dilation
 
 
-def get_edge_map(rgb_image):
+def get_derivative_binary_mask(rgb_image):
     """returns a binary mask of edges in an RGB image"""
     h, w = rgb_image.shape[:2]
     dx_image = rgb_image[:, 1:w - 1] - rgb_image[:, 0:w - 2]
     dy_image = rgb_image[1:h - 1] - rgb_image[0:h - 2]
     drivative_map = np.maximum(dx_image[1:-1], dy_image[:, 1:-1]).max(-1)
-
     edges_map = np.pad(drivative_map != 0, 1, mode='reflect').astype(np.uint8)
 
     return edges_map
@@ -39,7 +38,7 @@ def plot_vector_field(reference_image, vector_field, path="vector_field.png"):
 
 
 def overlay_edges(rgb_image):
-    drivative_map = get_edge_map(rgb_image)
+    drivative_map = get_derivative_binary_mask(rgb_image)
     drivative_map = binary_dilation(drivative_map, iterations=1)
 
     edges_map = np.ones_like(rgb_image)*255
@@ -92,6 +91,7 @@ def render_tiles(centers, oritentations, image, tile_size, path='mosaic.png'):
     loss = n_ovverided_pixels / loss_image.size
     plt.title(f"overided pixels: {n_ovverided_pixels} / {loss_image.size} (={loss * 100:.1f}%)")
     plt.imshow(cv2.cvtColor(mosaic, cv2.COLOR_BGR2RGB))
+    plt.tight_layout()
     plt.savefig(path)
     plt.clf()
     return loss
