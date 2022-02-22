@@ -18,14 +18,21 @@ def get_edge_map(rgb_image):
     return edges_map
 
 
-def plot_vector_field(vector_field, density=10, path="vector_field.png"):
+def plot_vector_field(reference_image, vector_field, path="vector_field.png"):
     dx, dy = vector_field[..., 0], vector_field[..., 1]
     h, w = dx.shape
-    x = np.arange(0, w, density)
-    y = np.arange(0, h, density)
+    x = np.arange(0, w,  max(1, w // 30))
+    y = np.arange(0, h, max(1, h // 30))
     xx, yy = np.meshgrid(x, y)
 
-    plt.quiver(xx, yy, dx[y][:, x], dy[y][:, x], angles='xy', scale=0.08, units='xy')
+    plt.imshow(cv2.cvtColor(reference_image, cv2.COLOR_BGR2RGB) , alpha=0.5)
+
+    # plt.axis('equal')
+    plt.quiver(xx, yy, dx[y][:, x], dy[y][:, x])
+    plt.xlim(-10, w + 10)
+    plt.ylim(-10, h + 10)
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.tight_layout()
     plt.gca().invert_yaxis()
     plt.savefig(path)
     plt.clf()
@@ -41,15 +48,14 @@ def overlay_edges(rgb_image):
     return np.minimum(rgb_image, edges_map)
 
 
-def plot_vornoi_cells(vornoi_map, points, oritentations, path='vornoi_cells.png'):
+def plot_vornoi_cells(vornoi_map, points, oritentations, avoidance_map, path='vornoi_cells.png'):
     image = color.label2rgb(vornoi_map)
     image = overlay_edges(image)
     plt.imshow(image)
-    plt.scatter(points[:,0], points[:,1], s=1, c='k')
+    plt.scatter(points[:,1], points[:,0], s=1, c='k')
+    plt.imshow(avoidance_map*255, alpha=0.5)
 
-    plt.quiver(points[:,0], points[:,1], oritentations[:,0], oritentations[:,1], angles='xy', scale=0.05, units='xy')
-    plt.gca().invert_yaxis()
-
+    plt.quiver(points[:,1], points[:,0], oritentations[:,1], oritentations[:,0])
     plt.savefig(path)
     plt.clf()
 
@@ -70,14 +76,17 @@ def render_tiles(centers, oritentations, image, tile_size, path='mosaic.png'):
                     (centers[i] + corner_3_direction[i] * tile_diameter),
                     (centers[i] + corner_4_direction[i] * tile_diameter)]
 
+        contours = np.array(contours)[:,::-1]
+
         color = image[int(centers[i][0]), int(centers[i][1])]
         box = np.int0(cv2.boxPoints(cv2.minAreaRect(np.array(contours).astype(int))))
         cv2.drawContours(mosaic, [box], -1, color=color.tolist(), thickness=cv2.FILLED)
-        cv2.drawContours(mosaic, [box], -1, color=(0,0,0), thickness=2)
+        # cv2.drawContours(mosaic, [box], -1, color=(0,0,0), thickness=2)
 
-    plt.imshow(mosaic)
+    plt.imshow(cv2.cvtColor(mosaic, cv2.COLOR_BGR2RGB))
     plt.savefig(path)
     plt.clf()
+
 
 def get_rotation_matrix(theta):
     c, s = np.cos(np.radians(theta)), np.sin(np.radians(theta))
