@@ -79,15 +79,15 @@ def create_direction_field(image):
     return direction_field
 
 def get_avoidance_map(image):
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     # Blur the image for better edge detection
-    img_blur = cv2.GaussianBlur(img_gray, (9, 9), 0)
+    img_blur = cv2.GaussianBlur(img_gray, (7, 7), 0)
     # mask = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=1, ksize=5)
     mask = cv2.Canny(image=img_blur, threshold1=100, threshold2=200)
 
     mask[mask==255] = 1
 
-    mask = binary_dilation(mask, iterations=1).astype(np.uint8)
+    # mask = binary_dilation(mask, iterations=1).astype(np.uint8)
     # mask = binary_erosion(mask, iterations=1).astype(np.uint8)
 
     return mask
@@ -120,11 +120,16 @@ def create_mosaic(reference_image, outputs_dir):
 
     points, oritentations = get_random_state(n_tiles, h, w)
 
+    losses = []
     for i in tqdm(range(n_iters)):
         vornoi_map, points, oritentations = get_vornoi_cells(points, oritentations, direction_field, avoidance_map)
         plot_vornoi_cells(vornoi_map, points, oritentations, avoidance_map, path=os.path.join(outputs_dir, f'Vornoi_diagram_{i}.png'))
+        loss = render_tiles(points, oritentations, reference_image, tile_size, path=os.path.join(outputs_dir, f'Mosaic_{i}.png'))
+        losses.append(loss)
 
-    render_tiles(points, oritentations, reference_image, tile_size, path=os.path.join(outputs_dir, 'Mosaic.png'))
+        plt.plot(np.arange(len(losses)), losses)
+        plt.savefig(os.path.join(outputs_dir, 'Loss.png'))
+        plt.clf()
 
 
 if __name__ == '__main__':
@@ -133,8 +138,8 @@ if __name__ == '__main__':
     img_path = '../images/Elat1.jpg'
     # img_path = '../images/diagonal.png'
     device = torch.device("cpu")
-    resize = 512
-    n_tiles = 1000
+    resize = 256
+    n_tiles = 3000
     delta = 0.7  # Direction field variation level
     n_iters = 20
 

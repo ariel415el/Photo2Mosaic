@@ -62,6 +62,7 @@ def plot_vornoi_cells(vornoi_map, points, oritentations, avoidance_map, path='vo
 
 def render_tiles(centers, oritentations, image, tile_size, path='mosaic.png'):
     mosaic = np.ones_like(image) * 127
+    loss_image = np.zeros(image.shape[:2])
 
     corner_1_direction = (oritentations @ get_rotation_matrix(45))
     corner_2_direction = (oritentations @ get_rotation_matrix(135))
@@ -83,9 +84,17 @@ def render_tiles(centers, oritentations, image, tile_size, path='mosaic.png'):
         cv2.drawContours(mosaic, [box], -1, color=color.tolist(), thickness=cv2.FILLED)
         # cv2.drawContours(mosaic, [box], -1, color=(0,0,0), thickness=2)
 
+        tmp = np.zeros_like(loss_image)
+        cv2.drawContours(tmp, [box], -1, color=1, thickness=cv2.FILLED)
+        loss_image += tmp
+
+    n_ovverided_pixels = loss_image[loss_image > 1].sum()
+    loss = n_ovverided_pixels / loss_image.size
+    plt.title(f"overided pixels: {n_ovverided_pixels} / {loss_image.size} (={loss * 100:.1f}%)")
     plt.imshow(cv2.cvtColor(mosaic, cv2.COLOR_BGR2RGB))
     plt.savefig(path)
     plt.clf()
+    return loss
 
 
 def get_rotation_matrix(theta):
