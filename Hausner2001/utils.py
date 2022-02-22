@@ -39,7 +39,7 @@ def plot_vector_field(reference_image, vector_field, path="vector_field.png"):
 
 def overlay_edges(rgb_image):
     drivative_map = get_derivative_binary_mask(rgb_image)
-    drivative_map = binary_dilation(drivative_map, iterations=1)
+    # drivative_map = binary_dilation(drivative_map, iterations=1)
 
     edges_map = np.ones_like(rgb_image)*255
     edges_map[drivative_map != 0] = [0,0,0]
@@ -59,7 +59,7 @@ def plot_vornoi_cells(vornoi_map, points, oritentations, avoidance_map, path='vo
     plt.clf()
 
 
-def render_tiles(centers, oritentations, image, tile_size, path='mosaic.png'):
+def render_tiles(centers, oritentations, image, tile_size, alpha_mask, path='mosaic.png'):
     mosaic = np.ones_like(image) * 127
     loss_image = np.zeros(image.shape[:2])
 
@@ -69,14 +69,14 @@ def render_tiles(centers, oritentations, image, tile_size, path='mosaic.png'):
     corner_4_direction = (oritentations @ get_rotation_matrix(315))
 
     tile_diameter = tile_size / np.sqrt(2)
-
     for i in range(centers.shape[0]):
-        contours = [(centers[i] + corner_1_direction[i] * tile_diameter),
-                    (centers[i] + corner_2_direction[i] * tile_diameter),
-                    (centers[i] + corner_3_direction[i] * tile_diameter),
-                    (centers[i] + corner_4_direction[i] * tile_diameter)]
+        alpha = alpha_mask[centers[i][0], centers[i][1]]
+        contours = [(centers[i] + corner_1_direction[i] * tile_diameter / alpha),
+                    (centers[i] + corner_2_direction[i] * tile_diameter / alpha),
+                    (centers[i] + corner_3_direction[i] * tile_diameter / alpha),
+                    (centers[i] + corner_4_direction[i] * tile_diameter / alpha)]
 
-        contours = np.array(contours)[:,::-1]
+        contours = np.array(contours)[:, ::-1]
 
         color = image[int(centers[i][0]), int(centers[i][1])]
         box = np.int0(cv2.boxPoints(cv2.minAreaRect(np.array(contours).astype(int))))

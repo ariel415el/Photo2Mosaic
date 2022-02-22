@@ -68,7 +68,11 @@ def get_vornoi_cells(points, oritentations, direction_field, avoidance_map):
         distance_maps = torch.abs((gaps * basis1).sum(-1)) + torch.abs((gaps * basis2).sum(-1))
         distance_maps = distance_maps.cpu().numpy()
 
+    for v in np.unique(alpha_mask):
+        distance_maps[alpha_mask[points[:, 0], points[:, 1]] == v] *= v
+
     vornoi_map = np.argmin(distance_maps, axis=0)
+
 
     # Mark edges as ex-teritory (push cells away from edges)
     vornoi_map[avoidance_map == 1] = vornoi_map.max() + 2
@@ -138,7 +142,7 @@ def create_mosaic(reference_image, outputs_dir):
     for i in tqdm(range(n_iters)):
         vornoi_map, points, oritentations = get_vornoi_cells(points, oritentations, direction_field, avoidance_map)
         plot_vornoi_cells(vornoi_map, points, oritentations, avoidance_map, path=os.path.join(outputs_dir, f'Vornoi_diagram_{i}.png'))
-        loss = render_tiles(points, oritentations, reference_image, tile_size, path=os.path.join(outputs_dir, f'Mosaic_{i}.png'))
+        loss = render_tiles(points, oritentations, reference_image, tile_size, alpha_mask, path=os.path.join(outputs_dir, f'Mosaic_{i}.png'))
         losses.append(loss)
 
         plt.plot(np.arange(len(losses)), losses)
@@ -148,11 +152,14 @@ def create_mosaic(reference_image, outputs_dir):
 
 if __name__ == '__main__':
     img_path = '../images/YingYang.png'
-    # img_path = '../images/Elon.jpg'
+    img_path = '../images/Elon.jpg'
     # img_path = '../images/Elat1.jpg'
     # img_path = '../images/diagonal.png'
+
+    mask_path = '../images/Elon_mask.jpg'
+
     device = torch.device("cpu")
-    resize = 512
+    resize = 256
     n_tiles = 2000
     delta = 0.75  # Direction field variation level
     n_iters = 20
@@ -162,4 +169,10 @@ if __name__ == '__main__':
 
     img = cv2.imread(img_path)
     img = cv2.resize(img, (int(resize * img.shape[1] / img.shape[0]), resize))
+
+    alpa_mask = cv2.imread(mask_path)
+    alpa_mask = cv2.resize(alpa_mask, (int(resize * alpa_mask.shape[1] / alpa_mask.shape[0]), resize))
+    alpha_mask = cv2.cvtColor(alpa_mask, cv2.COLOR_BGR2GRAY)
+    alpha_mask[alpha_mask <= 127] = 1
+    alpha_mask[alpha_mask > 127] = 2
     create_mosaic(img, outputs_dir)
