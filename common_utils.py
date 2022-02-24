@@ -59,6 +59,49 @@ def get_rotation_matrix(theta):
     return np.array(((c, -s), (s, c)))
 
 
-def aspect_ratio_resize(img, resize):
-    return cv2.resize(img, (int(resize * img.shape[1] / img.shape[0]), resize))
+def aspect_ratio_resize(img, resize, mode=None):
+    return cv2.resize(img, (int(resize * img.shape[1] / img.shape[0]), resize), interpolation=mode)
+
+def image_histogram_equalization(image, number_bins=256):
+    image_histogram, bins = np.histogram(image.flatten(), number_bins, density=True)
+    cdf = image_histogram.cumsum() # cumulative distribution function
+    cdf = 255 * cdf / cdf[-1] # normalize
+
+    # use linear interpolation of cdf to find new pixel values
+    image_equalized = np.interp(image.flatten(), bins[:-1], cdf)
+
+    return image_equalized.reshape(image.shape)
+
+def get_edges_map_DiBlasi2005(image):
+    """
+    Compute edges as described in the paper
+    """
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    img_gray = image_histogram_equalization(img_gray)
+
+    # Blur the image for better edge detection
+    img_gray = cv2.GaussianBlur(img_gray, (5, 5), 0)
+
+    mean, std = img_gray.mean(), img_gray.std()
+    T = std / 4
+
+    img_gray[np.abs(img_gray - mean) > T] = 1
+    img_gray[np.abs(img_gray - mean) <= T] = 0
+
+    edges_map = np.absolute(cv2.Laplacian(img_gray, cv2.CV_64F)).astype(np.uint8)
+    # edges_map = binary_opening(edges_map, iterations=1).astype(np.uint8)
+
+    return edges_map
+
+def get_edges_map_canny(image):
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Blur the image for better edge detection
+    img_blur = cv2.GaussianBlur(img_gray, (5, 5), 0)
+    # mask = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=1, ksize=5)
+    mask = cv2.Canny(image=img_blur, threshold1=100, threshold2=150)
+
+    mask[mask==255] = 1
+
+    return mask
 

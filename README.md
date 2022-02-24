@@ -13,10 +13,28 @@ Centroidal Vornoi diagram  |  Final mosaic
 <img src="readme_images/Hausner/Vornoi_diagram_19.png" width="300"/> | <img src="readme_images/Hausner/Mosaic_19.png" width="300"/> 
 
 
-# TODO:
+### TODO:
 - Dynamic square size
 - lower % tile override to 0
 
-# Cite
-Hausner, Alejo. "Simulating decorative mosaics." Proceedings of the 28th annual conference on Computer graphics and interactive techniques. 2001.
+# Artificial mosaics, (Di Blasi, Gallo 2005)
 
+
+# Cite
+@inproceedings{hausner2001simulating,
+  title={Simulating decorative mosaics},
+  author={Hausner, Alejo},
+  booktitle={Proceedings of the 28th annual conference on Computer graphics and interactive techniques},
+  pages={573--580},
+  year={2001}
+}
+article{di2005artificial,
+  title={Artificial mosaics},
+  author={Di Blasi, Gianpiero and Gallo, Giovanni},
+  journal={The Visual Computer},
+  volume={21},
+  number={6},
+  pages={373--383},
+  year={2005},
+  publisher={Springer}
+}

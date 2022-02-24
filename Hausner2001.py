@@ -10,19 +10,8 @@ from scipy.ndimage import binary_dilation, binary_erosion
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
-from common_utils import plot_vornoi_cells, get_rotation_matrix, plot_vector_field, aspect_ratio_resize
-
-
-def get_edges_map(image):
-    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Blur the image for better edge detection
-    img_blur = cv2.GaussianBlur(img_gray, (7, 7), 0)
-    # mask = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=1, ksize=5)
-    mask = cv2.Canny(image=img_blur, threshold1=100, threshold2=200)
-
-    mask[mask==255] = 1
-
-    return mask
+from common_utils import plot_vornoi_cells, get_rotation_matrix, plot_vector_field, aspect_ratio_resize, \
+    get_edges_map_canny
 
 
 def normalize_directions(vectors):
@@ -103,8 +92,8 @@ def create_direction_field(edge_map):
     """
 
     dist_transform = ndimage.distance_transform_edt(edge_map == 0)
-
     direction_field = np.stack(np.gradient(dist_transform), axis=2)
+    direction_field = cv2.GaussianBlur(direction_field, (5, 5), 0)
 
     return direction_field
 
@@ -112,7 +101,7 @@ def create_direction_field(edge_map):
 @dataclass
 class MosaicConfig:
     img_path: str = 'images/YingYang.png'
-    alpha_mask_path: str = 'images/YingYang_alpha_mask.png'
+    alpha_mask_path: str = None
     resize: int = 128
     n_tiles: int = 500
     n_iters: int = 10
@@ -145,7 +134,7 @@ class HausnerMosaicMaker:
         debug_dir = os.path.join(outputs_dir, "debug")
         os.makedirs(debug_dir, exist_ok=True)
 
-        edge_map = get_edges_map(self.image)
+        edge_map = get_edges_map_canny(self.image)
 
         avoidance_map = get_avoidance_map(edge_map)
 
@@ -197,22 +186,19 @@ class HausnerMosaicMaker:
         Render the mosaic: place oritented squares on a canvas with size defined by the alpha mask
         """
         mosaic = np.ones_like(self.image) * 127
-        loss_image = np.zeros(self.image.shape[:2])
+        coverage_map = np.zeros(self.image.shape[:2])
 
-        corner_1_direction = (oritentations @ get_rotation_matrix(45))
-        corner_2_direction = (oritentations @ get_rotation_matrix(135))
-        corner_3_direction = (oritentations @ get_rotation_matrix(225))
-        corner_4_direction = (oritentations @ get_rotation_matrix(315))
+        corner_directions = (oritentations @ np.stack([get_rotation_matrix(45),
+                                                       get_rotation_matrix(135),
+                                                       get_rotation_matrix(225),
+                                                       get_rotation_matrix(315)]))
 
-        tile_diameter = self.default_tile_size / np.sqrt(2)
+        corner_diameter = self.default_tile_size / np.sqrt(2)
         for i in range(centers.shape[0]):
             alpha = self.alpha_map[centers[i][0], centers[i][1]]
-            contours = [(centers[i] + corner_1_direction[i] * tile_diameter / alpha),
-                        (centers[i] + corner_2_direction[i] * tile_diameter / alpha),
-                        (centers[i] + corner_3_direction[i] * tile_diameter / alpha),
-                        (centers[i] + corner_4_direction[i] * tile_diameter / alpha)]
 
-            contours = np.array(contours)[:, ::-1]
+            contours = centers[i] + corner_directions[:, i] * corner_diameter / alpha
+            contours = contours[:, ::-1]
 
             color = self.image[int(centers[i][0]), int(centers[i][1])]
             box = np.int0(cv2.boxPoints(cv2.minAreaRect(np.array(contours).astype(int))))
@@ -220,18 +206,17 @@ class HausnerMosaicMaker:
             # cv2.drawContours(mosaic, [box], -1, color=(0,0,0), thickness=1)
 
             # update overidden pixels
-            tmp = np.zeros_like(loss_image)
+            tmp = np.zeros_like(coverage_map)
             cv2.drawContours(tmp, [box], -1, color=1, thickness=cv2.FILLED)
-            loss_image += tmp
+            coverage_map += tmp
 
-        n_ovverided_pixels = loss_image[loss_image > 1].sum()
-        loss = n_ovverided_pixels / loss_image.size
-        plt.title(f"overided pixels: {n_ovverided_pixels} / {loss_image.size} (={loss * 100:.1f}%)")
+        coverage_percentage = (coverage_map > 0).sum() / coverage_map.size * 100
+        overlap_percentage = (coverage_map > 1).sum() / coverage_map.size * 100
+        plt.title(f"Coverage: {coverage_percentage:.1f}% Overlap:{overlap_percentage:.1f}%)")
         plt.imshow(cv2.cvtColor(mosaic, cv2.COLOR_BGR2RGB))
         plt.tight_layout()
         plt.savefig(path)
         plt.clf()
-        return loss
 
 if __name__ == '__main__':
     device: torch.device = torch.device("cpu")
