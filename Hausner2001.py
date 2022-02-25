@@ -98,20 +98,6 @@ def create_direction_field(edge_map):
     return direction_field
 
 
-@dataclass
-class MosaicConfig:
-    img_path: str = 'images/YingYang.png'
-    alpha_mask_path: str = None
-    resize: int = 128
-    n_tiles: int = 500
-    n_iters: int = 10
-    delta: float = 0.8  # Direction field variation level
-
-    initial_location: str = 'uniform' # random / uniform
-
-    def get_str(self):
-        im_name = os.path.basename(os.path.splitext(self.img_path)[0])
-        return f"{im_name}_R-{self.resize}_N-{self.n_tiles}_dlta-{self.delta}"
 
 
 class HausnerMosaicMaker:
@@ -120,8 +106,10 @@ class HausnerMosaicMaker:
 
         self.image = aspect_ratio_resize(cv2.imread(self.config.img_path), self.config.resize)
         if self.config.alpha_mask_path is not None:
-            self.alpha_map = cv2.cvtColor(cv2.imread(self.config.alpha_mask_path), cv2.COLOR_BGR2GRAY)
+            self.alpha_map = cv2.imread(self.config.alpha_mask_path, cv2.IMREAD_GRAYSCALE)
             self.alpha_map = aspect_ratio_resize(self.alpha_map, self.config.resize)
+            self.alpha_map[self.alpha_map == 0] = 1
+            self.alpha_map[self.alpha_map == 255] = 2
         else:
             self.alpha_map = np.ones(self.image.shape[:2])
         assert self.image.shape[:2] == self.alpha_map.shape[:2]
@@ -217,6 +205,22 @@ class HausnerMosaicMaker:
         plt.tight_layout()
         plt.savefig(path)
         plt.clf()
+
+@dataclass
+class MosaicConfig:
+    img_path: str = 'images/YingYang.png'
+    alpha_mask_path: str = 'images/YingYang_mask.png'
+    resize: int = 512
+    n_tiles: int = 500
+    n_iters: int = 10
+    delta: float = 0.8  # Direction field variation level
+
+    initial_location: str = 'uniform' # random / uniform
+
+    def get_str(self):
+        im_name = os.path.basename(os.path.splitext(self.img_path)[0])
+        return f"{im_name}_R-{self.resize}_N-{self.n_tiles}_dlta-{self.delta}"
+
 
 if __name__ == '__main__':
     device: torch.device = torch.device("cpu")
