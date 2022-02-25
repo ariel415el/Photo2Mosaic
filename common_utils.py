@@ -49,7 +49,7 @@ def plot_vornoi_cells(vornoi_map, points, oritentations, avoidance_map, path='vo
     plt.scatter(points[:, 1], points[:, 0], s=1, c='k')
     plt.imshow(avoidance_map * 255, alpha=0.5)
 
-    plt.quiver(points[:, 1], points[:, 0], oritentations[:, 1], oritentations[:, 0])
+    plt.quiver(points[:, 1], points[:, 0], oritentations[:, 1], oritentations[:, 0], angles='xy')
     plt.savefig(path)
     plt.clf()
 
@@ -109,3 +109,15 @@ def get_edges_map_canny(image, blur_size=5, sigma=2):
 
     return mask
 
+
+def normalize_vector_field(vector_field):
+    """Divide an np aarray with last dimension of size 2 by its norm in this axis, replace zero divisions"""
+    norms = np.linalg.norm(vector_field, axis=-1)
+    vector_field /= norms[..., None]
+    if 0 in norms:
+        nans = np.where(norms == 0)
+        random_direction = np.random.rand(len(nans[0]), 2)
+        random_direction /= np.linalg.norm(random_direction, axis=1, keepdims=True)
+        vector_field[nans] = random_direction
+
+    return vector_field

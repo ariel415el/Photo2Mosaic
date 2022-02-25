@@ -9,7 +9,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 from common_utils import get_rotation_matrix, plot_vector_field, aspect_ratio_resize, \
-    get_edges_map_canny
+    get_edges_map_canny, normalize_vector_field
 
 EDGE_LABEL = 1
 FREE_SPACE_LABEL = 2
@@ -57,19 +57,6 @@ def get_tile_rectangle_contour(center, tile_size, normal1, normal2):
     box = np.int0(cv2.boxPoints(cv2.minAreaRect(np.array(contours).astype(int))))
 
     return box
-
-
-def normalize_vector_field(vector_field):
-    """Divide an np aarray with last dimension of size 2 by its norm in this axis, replace zero divisions"""
-    norms = np.linalg.norm(vector_field, axis=-1)
-    vector_field /= norms[..., None]
-    if 0 in norms:
-        nans = np.where(norms == 0)
-        random_direction = np.random.rand(len(nans[0]), 2)
-        random_direction /= np.linalg.norm(random_direction, axis=1, keepdims=True)
-        vector_field[nans] = random_direction
-
-    return vector_field
 
 
 class Blasi05MosaicMaker:
