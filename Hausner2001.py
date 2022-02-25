@@ -11,25 +11,12 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 from common_utils import plot_vornoi_cells, get_rotation_matrix, plot_vector_field, aspect_ratio_resize, \
-    get_edges_map_canny
+    get_edges_map_canny, normalize_vector_field
 
 
-def normalize_directions(vectors):
-    # Normalize vector filed
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    vectors /= norms
-
-    # Replace zero vectors with random directions
-    nans = norms[:, 0] == 0
-    random_direction = np.random.rand(nans.sum(), 2)
-    random_direction /= np.linalg.norm(random_direction, axis=1, keepdims=True)
-    vectors[nans] = random_direction
-
-    return vectors
-
-
-def get_avoidance_map(edges_map):
-    # edges_map = binary_dilation(edges_map, iterations=1).astype(np.uint8)
+def get_avoidance_map(edges_map, dilation_iterations=0):
+    if dilation_iterations > 0:
+        edges_map = binary_dilation(edges_map, iterations=1).astype(np.uint8)
     # mask = binary_erosion(mask, iterations=1).astype(np.uint8)
 
     return edges_map
@@ -67,7 +54,6 @@ def update_point_locations(points, oritentations, direction_field, avoidance_map
 
     vornoi_map = np.argmin(distance_maps, axis=0)
 
-
     # Mark edges as ex-teritory (push cells away from edges)
     vornoi_map[avoidance_map == 1] = vornoi_map.max() + 2
 
@@ -78,8 +64,7 @@ def update_point_locations(points, oritentations, direction_field, avoidance_map
     centers = np.array([coords[vornoi_map==i].mean(0) for i in range(len(points))]).astype(np.uint64)
 
     # update orientations using vector field
-    oritentations = direction_field[centers[:,0].astype(int), centers[:, 1].astype(int)]
-    oritentations = normalize_directions(oritentations)
+    oritentations = direction_field[centers[:, 0].astype(int), centers[:, 1].astype(int)]
 
     return centers, oritentations, vornoi_map
 
@@ -92,12 +77,12 @@ def create_direction_field(edge_map):
     """
 
     dist_transform = ndimage.distance_transform_edt(edge_map == 0)
+    dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 2)
     direction_field = np.stack(np.gradient(dist_transform), axis=2)
     direction_field = cv2.GaussianBlur(direction_field, (5, 5), 0)
+    direction_field = normalize_vector_field(direction_field)
 
     return direction_field
-
-
 
 
 class HausnerMosaicMaker:
@@ -107,9 +92,9 @@ class HausnerMosaicMaker:
         self.image = aspect_ratio_resize(cv2.imread(self.config.img_path), self.config.resize)
         if self.config.alpha_mask_path is not None:
             self.alpha_map = cv2.imread(self.config.alpha_mask_path, cv2.IMREAD_GRAYSCALE)
-            self.alpha_map = aspect_ratio_resize(self.alpha_map, self.config.resize)
             self.alpha_map[self.alpha_map == 0] = 1
             self.alpha_map[self.alpha_map == 255] = 2
+            self.alpha_map = aspect_ratio_resize(self.alpha_map, self.config.resize, mode=cv2.INTER_NEAREST)
         else:
             self.alpha_map = np.ones(self.image.shape[:2])
         assert self.image.shape[:2] == self.alpha_map.shape[:2]
@@ -124,24 +109,26 @@ class HausnerMosaicMaker:
 
         edge_map = get_edges_map_canny(self.image)
 
-        avoidance_map = get_avoidance_map(edge_map)
+        avoidance_map = get_avoidance_map(edge_map, self.config.edge_avoidance_dilation)
 
         direction_field = create_direction_field(edge_map)
 
-        plot_vector_field(direction_field, self.image, path=os.path.join(debug_dir, 'VectorField.png'))
-
         points, oritentations = self._get_initial_state()
 
-        losses = []
+        coverage = []
+        overlap = []
         for i in tqdm(range(self.config.n_iters)):
             points, oritentations, debug_vornoi_diagram = update_point_locations(points, oritentations, direction_field, avoidance_map, self.alpha_map)
 
             # debug code
             plot_vornoi_cells(debug_vornoi_diagram, points, oritentations, avoidance_map, path=os.path.join(debug_dir, f'Vornoi_diagram_{i}.png'))
-            loss = self._render_tiles(points, oritentations, path=os.path.join(debug_dir, f'Mosaic_{i}.png'))
-            losses.append(loss)
+            coverage_percentage, overlap_percentage = self._render_tiles(points, oritentations, path=os.path.join(debug_dir, f'Mosaic_{i}.png'))
+            coverage.append(coverage_percentage)
+            overlap.append(overlap_percentage)
 
-            plt.plot(np.arange(len(losses)), losses)
+            plt.plot(np.arange(len(coverage)), coverage, label='Coverage')
+            plt.plot(np.arange(len(overlap)), overlap, label='Overlap')
+            plt.legend()
             plt.savefig(os.path.join(debug_dir, 'Loss.png'))
             plt.clf()
 
@@ -149,16 +136,24 @@ class HausnerMosaicMaker:
         self._render_tiles(points, oritentations, path=os.path.join(outputs_dir, f'FinalMosaic.png'))
 
         # Debug code:
-        plt.imshow(cv2.cvtColor(avoidance_map * 255, cv2.COLOR_GRAY2RGB))
-        plt.savefig(os.path.join(debug_dir, 'EdgeMap.png'))
-        plt.clf()
+        plot_vector_field(direction_field, self.image, path=os.path.join(debug_dir, 'VectorField.png'))
+        cv2.imwrite(os.path.join(debug_dir, 'EdgeMap.png'), avoidance_map * 255)
 
     def _get_initial_state(self):
         """Sample initial tile centers and orientations  cell centers and directions"""
         N = self.config.n_tiles
         h, w = self.h, self.w
         if self.config.initial_location == 'random':
-            points = np.stack([np.random.random(N) * h, np.random.random(N) * w], axis=1).astype(np.uint64)
+            # points = np.stack([np.random.random(N) * h, np.random.random(N) * w], axis=1).astype(np.uint64)
+            dense_area_proportion = (self.alpha_map == 2).sum() / self.alpha_map.size
+            num_dense_area_points = int((4 * N * dense_area_proportion) / (1 + 3 * dense_area_proportion))
+            num_default_area_points = N - num_dense_area_points
+            posible_points = np.stack(np.where(self.alpha_map == 2), axis=1)
+            dense_positions = posible_points[np.random.randint(len(posible_points), size=num_dense_area_points)]
+            posible_points = np.stack(np.where(self.alpha_map == 1), axis=1)
+            default_positions = posible_points[np.random.randint(len(posible_points), size=num_default_area_points)]
+            points = np.concatenate([default_positions, dense_positions], axis=0)
+
         else: # uniform
             s = int(np.ceil(np.sqrt(N)))
             y, x = np.meshgrid(np.linspace(1, h - 1, s), np.linspace(1, w - 1, s))
@@ -175,6 +170,8 @@ class HausnerMosaicMaker:
         """
         mosaic = np.ones_like(self.image) * 127
         coverage_map = np.zeros(self.image.shape[:2])
+
+        assert np.allclose(np.linalg.norm(oritentations,axis=1), 1)
 
         corner_directions = (oritentations @ np.stack([get_rotation_matrix(45),
                                                        get_rotation_matrix(135),
@@ -200,22 +197,22 @@ class HausnerMosaicMaker:
 
         coverage_percentage = (coverage_map > 0).sum() / coverage_map.size * 100
         overlap_percentage = (coverage_map > 1).sum() / coverage_map.size * 100
-        plt.title(f"Coverage: {coverage_percentage:.1f}% Overlap:{overlap_percentage:.1f}%)")
-        plt.imshow(cv2.cvtColor(mosaic, cv2.COLOR_BGR2RGB))
-        plt.tight_layout()
-        plt.savefig(path)
-        plt.clf()
+        print(f"Coverage: {coverage_percentage:.3f}% Overlap:{overlap_percentage:.3f}%)")
+        cv2.imwrite(path, mosaic)
+
+        return coverage_percentage, overlap_percentage
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/YingYang.png'
-    alpha_mask_path: str = 'images/YingYang_mask.png'
+    img_path: str = 'images/Tom.jpg'
+    alpha_mask_path: str = 'images/Tom_mask.png'
     resize: int = 512
     n_tiles: int = 500
-    n_iters: int = 10
-    delta: float = 0.8  # Direction field variation level
+    n_iters: int = 50
+    delta: float = 1  # Direction field variation level
+    edge_avoidance_dilation = 2
 
-    initial_location: str = 'uniform' # random / uniform
+    initial_location: str = 'random' # random / uniform
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])
