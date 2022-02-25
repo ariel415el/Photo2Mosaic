@@ -8,9 +8,9 @@ enhance edges. oriented color squares are then palced at the center of each cell
 
 Input image             |  Canny edgemap
 :----------------------:|:----------------:
-<img src="images/Elon.jpg" width="300"/> | <img src="readme_images/Hausner/EdgeMap.png" width="300"/> 
+<img src="images/Elon.jpg" width="300"/> | <img src="readme_images/Hausner2001/EdgeMap.png" width="300"/> 
 Centroidal Vornoi diagram  |  Final mosaic
-<img src="readme_images/Hausner/Vornoi_diagram_19.png" width="300"/> | <img src="readme_images/Hausner/Mosaic_19.png" width="300"/> 
+<img src="readme_images/Hausner2001/Vornoi_diagram_19.png" width="300"/> | <img src="readme_images/Hausner2001/Mosaic_19.png" width="300"/> 
 
 
 ### TODO:
@@ -18,6 +18,12 @@ Centroidal Vornoi diagram  |  Final mosaic
 - lower % tile override to 0
 
 # Artificial mosaics, (Di Blasi, Gallo 2005)
+Input image             |  Canny edgemap over binary mask
+:----------------------:|:----------------:
+<img src="images/Elon.jpg" width="300"/> | <img src="readme_images/Diblasi2005/EdgeMap.png" width="300"/> 
+Centroidal Vornoi diagram  |  Final mosaic Coverage: 86.3% Overlap: 4.2%
+<img src="readme_images/Diblasi2005/Level_matrix.png" width="300"/> | <img src="readme_images/Diblasi2005/FinalMosaic.png" width="300"/> 
+
 
 
 # Cite

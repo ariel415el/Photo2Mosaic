@@ -7,17 +7,17 @@ from scipy.ndimage.morphology import binary_dilation
 
 
 def plot_vector_field(vector_field, image=None, path="vector_field.png"):
-    dx, dy = vector_field[..., 0], vector_field[..., 1]
+    dx, dy = vector_field[..., 1], vector_field[..., 0].copy()
     h, w = dx.shape
-    x = np.arange(0, w, max(1, w // 30))
-    y = np.arange(0, h, max(1, h // 30))
+    x = np.arange(0, w, max(1, w // 25))
+    y = np.arange(0, h, max(1, h // 25))
     xx, yy = np.meshgrid(x, y)
 
     if image is not None:
         plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB), alpha=0.5)
 
     # plt.axis('equal')
-    plt.quiver(xx, yy, dx[y][:, x], dy[y][:, x])
+    plt.quiver(xx, yy, dx[y][:, x], dy[y][:, x], angles='xy')
     plt.xlim(-10, w + 10)
     plt.ylim(-10, h + 10)
     plt.gca().set_aspect('equal', adjustable='box')
@@ -62,6 +62,7 @@ def get_rotation_matrix(theta):
 def aspect_ratio_resize(img, resize, mode=None):
     return cv2.resize(img, (int(resize * img.shape[1] / img.shape[0]), resize), interpolation=mode)
 
+
 def image_histogram_equalization(image, number_bins=256):
     image_histogram, bins = np.histogram(image.flatten(), number_bins, density=True)
     cdf = image_histogram.cumsum() # cumulative distribution function
@@ -71,6 +72,7 @@ def image_histogram_equalization(image, number_bins=256):
     image_equalized = np.interp(image.flatten(), bins[:-1], cdf)
 
     return image_equalized.reshape(image.shape)
+
 
 def get_edges_map_DiBlasi2005(image):
     """
@@ -94,10 +96,12 @@ def get_edges_map_DiBlasi2005(image):
 
     return edges_map
 
-def get_edges_map_canny(image):
+def get_edges_map_canny(image, blur_size=5, sigma=2):
     img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
     # Blur the image for better edge detection
-    img_blur = cv2.GaussianBlur(img_gray, (5, 5), 0)
+    img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), sigma)
+
     # mask = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=1, ksize=5)
     mask = cv2.Canny(image=img_blur, threshold1=100, threshold2=150)
 
