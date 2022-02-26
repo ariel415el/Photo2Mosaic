@@ -19,11 +19,11 @@ ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45,90]}
 def oriented_distance(normal, handicap_factor, vector):
     """Compute l1 distance in oriented axis with handicap on the first normal"""
     normal2 = normal @ ROTATION_MATRICES[90]
-    dist = handicap_factor * np.abs(vector @ normal)**2 + np.abs(vector @ normal2)**2
+    dist = handicap_factor * np.abs(vector @ normal) + np.abs(vector @ normal2)
     return dist
 
 
-def find_approximate_location(center, normal, diameter, candidate_location_map, handicap_factor=2):
+def find_approximate_location(center, normal, diameter, candidate_location_map, search_area_normal_factor):
     """
     Look in the orientedd surrounding of 'center' for free space in 'candidate_location_map'
     """
@@ -34,7 +34,7 @@ def find_approximate_location(center, normal, diameter, candidate_location_map, 
     all_offsets = np.column_stack((rs.ravel(), cs.ravel()))
 
     # sort surrounding_points by an oriented distance disprefering points in the direction of the normal to the edge
-    all_offsets = sorted(list(all_offsets), key=lambda x: oriented_distance(normal, handicap_factor, x))
+    all_offsets = sorted(list(all_offsets), key=lambda x: oriented_distance(normal, search_area_normal_factor, x))
 
     for offset in all_offsets:
         point = center + offset
@@ -45,12 +45,14 @@ def find_approximate_location(center, normal, diameter, candidate_location_map, 
     return None
 
 
-def get_tile_rectangle_contour(center, tile_size, normal1, normal2):
+def get_tile_rectangle_contour(center, tile_size, normal, normal_factors=(1, 1)):
     """Get a cv2 drawable contour of a rectangle centered in 'center' with 2 faces in normal1, normal2"""
-    corner_directions = np.array([normal1 + normal2,
-                                  normal1 - normal2,
-                                  -normal1 - normal2,
-                                  -normal1 + normal2])
+    vec1 = normal * normal_factors[0]
+    vec2 = normal @ ROTATION_MATRICES[90] * normal_factors[1]
+    corner_directions = np.array([vec1 + vec2,
+                                  vec1 - vec2,
+                                  -vec1 - vec2,
+                                  -vec1 + vec2])
 
     contours = center + corner_directions * (tile_size / 2)
     contours = contours[:, ::-1]
@@ -129,6 +131,18 @@ class Blasi05MosaicMaker:
 
         return direction_field, level_matrix
 
+    def _get_next_tile_position(self, position, direction_field, candidate_location_map):
+        if position is not None:
+            normal = direction_field[position[0], position[1]]
+            search_area_size = (self.config.default_tile_size // self.size_map[position[0], position[1]]) + 1
+            position = find_approximate_location(position, normal, search_area_size, candidate_location_map, self.config.search_area_normal_factor)
+
+        if position is None:  # find a random free-space
+            candidate_points = np.stack(np.where(candidate_location_map == 2), axis=1)
+            position = candidate_points[np.random.randint(0, len(candidate_points))]
+
+        return position
+
     def _render_tiles(self, direction_field, level_matrix, path='FinalMosaic.png'):
         """
         Render the mosaic: place oritented squares on a canvas with size defined by the alpha mask
@@ -141,30 +155,17 @@ class Blasi05MosaicMaker:
         n_placed_tiles = 0
         center = None
         while (candidate_location_map == 2).any():
-            if center is None:  # find a random free-space
-                candidate_points = np.stack(np.where(candidate_location_map == 2), axis=1)
-                center = candidate_points[np.random.randint(0, len(candidate_points))]
-            else:  # Find an adjecnt place on the chain
-                normal = direction_field[center[0], center[1]]
-                search_area_size = (self.config.default_tile_size // self.size_map[center[0], center[1]]) + 2
-                center = find_approximate_location(center, normal, search_area_size, candidate_location_map, handicap_factor=2)
-                if center is None:
-                    continue
+            center = self._get_next_tile_position(center, direction_field, candidate_location_map)
 
             local_tile_size = self.config.default_tile_size / self.size_map[center[0], center[1]]
             normal = direction_field[center[0], center[1]]
-            normal2 = normal @ ROTATION_MATRICES[90] * self.config.aspect_ratio
-            contour = get_tile_rectangle_contour(center, local_tile_size, normal, normal2)
+
+            contour = get_tile_rectangle_contour(center, local_tile_size, normal, (1, self.config.aspect_ratio))
 
             # draw oriented tile
             tile_color = self.image[int(center[0]), int(center[1])].tolist()
             cv2.drawContours(mosaic, [contour], -1, color=tile_color, thickness=cv2.FILLED)
             cv2.drawContours(mosaic, [contour], -1, color=(0, 0, 0), thickness=1)
-
-            # # Debug Draw tile normal
-            # center_xy = center[::-1].astype(int)
-            # direction_xy = (normal[::-1] * self.config.default_tile_size / 2).astype(int)
-            # cv2.arrowedLine(mosaic, tuple(center_xy), tuple(center_xy + direction_xy), (0, 0, 255), 1)
 
             # update coverage_map
             tmp = np.zeros_like(coverage_map)
@@ -173,14 +174,18 @@ class Blasi05MosaicMaker:
 
             # Remove surrounding from candidate points
             delete_area = local_tile_size * self.config.gap_factor
-            contour = get_tile_rectangle_contour(center, delete_area, normal * 0.5, normal2)
+            contour = get_tile_rectangle_contour(center, delete_area, normal, (self.config.delete_area_normal_factor, self.config.aspect_ratio))
             cv2.drawContours(candidate_location_map, [contour], -1, color=0, thickness=cv2.FILLED)
 
             n_placed_tiles += 1
             pbar.set_description(f"Placed tiles: {n_placed_tiles}")
 
-            if n_placed_tiles % 100 == 0:
+            if n_placed_tiles % 1 == 0:
                 tmp = mosaic + ((candidate_location_map == 2).astype(np.uint8) * 255 * 0.4)[:,:,None]
+                # Debug Draw tile normal
+                center_xy = center[::-1].astype(int)
+                direction_xy = (normal[::-1] * self.config.default_tile_size / 2).astype(int)
+                cv2.arrowedLine(tmp, tuple(center_xy), tuple(center_xy + direction_xy), (0, 0, 255), 1)
                 cv2.imwrite(os.path.join(self.debug_dir, f"Moisaic-step-{n_placed_tiles}.png"), tmp)
 
         coverage_percentage = (coverage_map > 0).sum() / coverage_map.size * 100
@@ -195,11 +200,13 @@ class MosaicConfig:
     size_map_path: str = 'images/Elon_mask.png'
     resize: int = 512
     default_tile_size = 16
-    aspect_ratio = 1
     gap_factor = 2  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
     extra_level_gap = 2  # the gap between level lines will be tile_size + levels_gap
-    direction_reference = 'edges' # edges/level_map: use edges or levelmap for directions field
-    edges_reference = 'mask' # image/mask compute edges from image itself or from the mask
+    direction_reference = 'edges'  # edges/level_map: use edges or levelmap for directions field
+    edges_reference = 'mask'  # image/mask compute edges from image itself or from the mask
+    aspect_ratio = 1
+    search_area_normal_factor: int = 1000      # how much to decrease the local search area along the first normal
+    delete_area_normal_factor: float = 0.9  # how much to decrease the area of deleted open slots in the direction of the first nomal
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])
