@@ -71,8 +71,8 @@ class Blasi05MosaicMaker:
         self.image = aspect_ratio_resize(cv2.imread(self.config.img_path), self.config.resize)
         if self.config.size_map_path is not None:
             self.size_map = cv2.imread(self.config.size_map_path, cv2.IMREAD_GRAYSCALE)
-            self.size_map[self.size_map == 0] = 1
             self.size_map[self.size_map == 255] = 2
+            self.size_map[self.size_map == 0] = 1
             self.size_map = aspect_ratio_resize(self.size_map, self.config.resize, mode=cv2.INTER_NEAREST)
         else:
             self.size_map = np.ones(self.image.shape[:2], dtype=int)
@@ -85,7 +85,7 @@ class Blasi05MosaicMaker:
 
     def make(self, outputs_dir):
         self._create_output_dirs(outputs_dir)
-        
+
         # Create the matrices needed for buildin the mosaic
         if self.config.edges_reference == 'mask' and self.config.size_map_path is not None:
             edge_map = get_edges_map_canny(cv2.cvtColor(self.size_map*127, cv2.COLOR_GRAY2BGR))
@@ -98,11 +98,15 @@ class Blasi05MosaicMaker:
 
         # Dumb debug images
         plot_vector_field(direction_field, edge_map*255, path=os.path.join(self.debug_dir, 'VectorField.png'))
+        cv2.imwrite(os.path.join(self.debug_dir, 'size_map.png'), self.size_map * 127)
         cv2.imwrite(os.path.join(self.debug_dir, 'EdgeMap.png'), edge_map * 255)
         cv2.imwrite(os.path.join(self.debug_dir, 'Level_matrix.png'), level_matrix * 127)
 
     def _get_level_matrix_from_dist_map(self, dist_map, offset=0.5):
-        """Create binary mask where level lines in specific gaps are turned on"""
+        """
+        Create binary mask where level lines in specific gaps are turned on
+        offset: float: 0.0 - 1.0 where to put the level maps
+        """
         dist_map = dist_map.astype(int)
         level_matrix = np.zeros_like(dist_map).astype(np.uint8)
         default_levels_gap = self.config.default_tile_size + self.config.extra_level_gap
@@ -120,14 +124,9 @@ class Blasi05MosaicMaker:
         direction_reference: 'level_map'/'edges'. what binary mask will be used to compute the direction field
         """
         dist_transform = ndimage.distance_transform_edt(edge_map == 0)
-
         level_matrix = self._get_level_matrix_from_dist_map(dist_transform, offset=0.5)
-        dist_transform = ndimage.distance_transform_edt(level_matrix == 0)
-        level_matrix = self._get_level_matrix_from_dist_map(dist_transform, offset=0)
 
-        if direction_reference == 'edges':
-            dist_transform = ndimage.distance_transform_edt(edge_map == 0)
-        else:
+        if direction_reference == 'level_maps':
             dist_transform = ndimage.distance_transform_edt(level_matrix == 0)
 
         dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 2)
@@ -136,7 +135,7 @@ class Blasi05MosaicMaker:
 
         return direction_field, level_matrix
 
-    def _get_next_tile_position(self, position, direction_field, candidate_location_map):
+    def _get_next_tile_position(self, position, candidate_location_map):
         if position is not None:  # Find approximate location
            search_diameter = int(np.sqrt(2) * self.config.default_tile_size // self.size_map[position[0], position[1]])
            position = find_approximate_location(position, search_diameter, candidate_location_map)
@@ -156,12 +155,14 @@ class Blasi05MosaicMaker:
 
         return position
 
-    def _render_tiles(self, direction_field, level_matrix, path='FinalMosaic.png'):
+    def _render_tiles(self, direction_field, level_matrix,  path='FinalMosaic.png'):
         """
         Render the mosaic: place oritented squares on a canvas with size defined by the alpha mask
         """
         mosaic = np.ones_like(self.image) * self.config.cement_color
         coverage_map = np.zeros(self.image.shape[:2])
+
+        blurred_iamge = cv2.GaussianBlur(self.image, (7, 7), 0)
 
         all_track_maps = get_track_maps_from_level_map(level_matrix)
 
@@ -170,16 +171,16 @@ class Blasi05MosaicMaker:
         for track_map in all_track_maps:
             center = None
             while (track_map == FREE_SPACE_LABEL).any():
-                center = self._get_next_tile_position(center, direction_field, track_map)
+                center = self._get_next_tile_position(center, track_map)
 
                 normal = direction_field[center[0], center[1]]
 
+                tile_color = blurred_iamge[center[0], center[1]].tolist()
                 local_tile_size = self.config.default_tile_size / self.size_map[center[0], center[1]]
 
                 contour = get_tile_rectangle_contour(center, local_tile_size, normal, (1, self.config.aspect_ratio))
 
                 # draw oriented tile
-                tile_color = self.image[int(center[0]), int(center[1])].tolist()
                 cv2.drawContours(mosaic, [contour], -1, color=tile_color, thickness=cv2.FILLED)
                 cv2.drawContours(mosaic, [contour], -1, color=(0, 0, 0), thickness=1)
 
@@ -212,20 +213,20 @@ class Blasi05MosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/Elat1.jpg'
-    size_map_path: str = 'images/Elat1_mask.png'
-    resize: int = 512
-    default_tile_size = 8
+    img_path: str = 'images/Classic1.png'
+    size_map_path: str = 'images/Classic1_mask.png'
+    resize: int = 1024
+    default_tile_size = 12
     extra_level_gap = 2  # the gap between level lines will be tile_size + levels_gap
     direction_reference = 'edges'  # edges/level_map: use edges or levelmap for directions field
     edges_reference = 'mask'  # image/mask compute edges from image itself or from the mask
     aspect_ratio = 1
-    delet_area_factor = 2  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
+    delet_area_factor = 1.8  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
     cement_color = 127
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])
-        return f"{im_name}_R-{self.resize}_T-{self.default_tile_size}"
+        return f"{im_name}_R-{self.resize}_T-{self.default_tile_size}_D-{self.delet_area_factor}"
 
 
 if __name__ == '__main__':
