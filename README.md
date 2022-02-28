@@ -25,8 +25,8 @@ Centroidal Vornoi diagram  |  Final mosaic Coverage: 86.3% Overlap: 4.2%
 <img src="readme_images/Diblasi2005/Level_matrix.png" width="300"/> | <img src="readme_images/Diblasi2005/FinalMosaic.png" width="300"/> 
 
 ### TODO:
-- Avoid overriding pixels in corners
-- Avoid gaps by selecting tracks loose ends when searching for new empty space
+- Cut tiles according to predefined strategy and not by order of placement
+- Consider trimming tiles by the offset-levelmap
 
 # Cite
 @inproceedings{hausner2001simulating,

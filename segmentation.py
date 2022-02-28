@@ -52,4 +52,4 @@ class segmentor:
 
 if __name__ == '__main__':
     model = segmentor()
-    model("images/Elat1.jpg", resize=512, T=0.35)
+    model("images/Lenna.png", resize=512, T=0.35)
