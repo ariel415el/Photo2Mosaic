@@ -40,10 +40,6 @@ class segmentor:
             from scipy.ndimage import binary_closing, binary_dilation
             closed_person_mask = binary_closing(person_mask, iterations=15).astype(np.uint8)
 
-            # # return person_mask
-            # images = [person_mask[None, None,].repeat(1, 3, 1, 1), torch.from_numpy(closed_person_mask)[None, None,].repeat(1, 3, 1, 1), image]
-            # save_image(torch.cat(images, dim=0), "img.png", normalize=True)
-
             closed_person_mask[closed_person_mask==1] = 255
 
             path, ext = os.path.splitext(image_path)
@@ -52,4 +48,4 @@ class segmentor:
 
 if __name__ == '__main__':
     model = segmentor()
-    model("images/Lenna.png", resize=512, T=0.35)
+    model("images/Portrait.png", resize=512, T=0.35)

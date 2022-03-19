@@ -24,7 +24,7 @@ def get_avoidance_map(edges_map, dilation_iterations=0):
 
 def update_point_locations(points, oritentations, direction_field, avoidance_map, alpha_map):
     """
-    Iterative approach for computing centridal vornoi cells using brute force equivalet of the Z-buffer algorithm
+    Iterative approach for computing centridal Vornoi cells using brute force equivalet of the Z-buffer algorithm
     For point in "points" compute a distance map now argmin over all maps to get a single map with index of
     closest point to each coordinate.
     The metric is used is the L1 distance with axis rotated by the points' orientation
