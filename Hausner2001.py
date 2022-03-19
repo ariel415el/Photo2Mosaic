@@ -1,17 +1,14 @@
 import os.path
 from dataclasses import dataclass
 
-import cv2
-import numpy as np
 import torch
-from matplotlib import pyplot as plt
 from scipy import ndimage
 from scipy.ndimage import binary_dilation, binary_erosion
 from tqdm import tqdm
-from matplotlib import pyplot as plt
 
-from common_utils import plot_vornoi_cells, get_rotation_matrix, plot_vector_field, aspect_ratio_resize, \
-    get_edges_map_canny, normalize_vector_field
+from utils import *
+
+ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, 135, 225, 315]}
 
 
 def get_avoidance_map(edges_map, dilation_iterations=0):
@@ -36,8 +33,8 @@ def update_point_locations(points, oritentations, direction_field, avoidance_map
 
     diffs = coords - points[:, None, None]
 
-    basis1 = (oritentations @ get_rotation_matrix(45))[:, None, None]
-    basis2 = (oritentations @ get_rotation_matrix(-45))[:, None, None]
+    basis1 = oritentations[:, None, None]
+    basis2 = (oritentations @ ROTATION_MATRICES[90])[:, None, None]
 
     # Heavy computation on GPU
     with torch.no_grad():
@@ -75,7 +72,6 @@ def create_direction_field(edge_map):
     Compute edges map its distance transform and then its gradient map.
     Normalize gradient vector to have unit norm.
     """
-
     dist_transform = ndimage.distance_transform_edt(edge_map == 0)
     dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 2)
     direction_field = np.stack(np.gradient(dist_transform), axis=2)
@@ -89,15 +85,7 @@ class HausnerMosaicMaker:
     def __init__(self, configs):
         self.config = configs
 
-        self.image = aspect_ratio_resize(cv2.imread(self.config.img_path), self.config.resize)
-        if self.config.alpha_mask_path is not None:
-            self.alpha_map = cv2.imread(self.config.alpha_mask_path, cv2.IMREAD_GRAYSCALE)
-            self.alpha_map[self.alpha_map == 0] = 1
-            self.alpha_map[self.alpha_map == 255] = 2
-            self.alpha_map = aspect_ratio_resize(self.alpha_map, self.config.resize, mode=cv2.INTER_NEAREST)
-        else:
-            self.alpha_map = np.ones(self.image.shape[:2])
-        assert self.image.shape[:2] == self.alpha_map.shape[:2]
+        self.image, self.alpha_map = load_images(self.config.img_path, self.config.alpha_mask_path, self.config.resize)
 
         self.h, self.w, _ = self.image.shape
         self.default_tile_size = int(self.config.delta * np.sqrt(self.h * self.w / self.config.n_tiles))
@@ -120,17 +108,17 @@ class HausnerMosaicMaker:
         for i in tqdm(range(self.config.n_iters)):
             points, oritentations, debug_vornoi_diagram = update_point_locations(points, oritentations, direction_field, avoidance_map, self.alpha_map)
 
-            # debug code
-            plot_vornoi_cells(debug_vornoi_diagram, points, oritentations, avoidance_map, path=os.path.join(debug_dir, f'Vornoi_diagram_{i}.png'))
-            coverage_percentage, overlap_percentage = self._render_tiles(points, oritentations, path=os.path.join(debug_dir, f'Mosaic_{i}.png'))
-            coverage.append(coverage_percentage)
-            overlap.append(overlap_percentage)
+            if i % self.config.debug_freq == 0:
+                plot_vornoi_cells(debug_vornoi_diagram, points, oritentations, avoidance_map, path=os.path.join(debug_dir, f'Vornoi_diagram_{i}.png'))
+                coverage_percentage, overlap_percentage = self._render_tiles(points, oritentations, path=os.path.join(debug_dir, f'Mosaic_{i}.png'))
+                coverage.append(coverage_percentage)
+                overlap.append(overlap_percentage)
 
-            plt.plot(np.arange(len(coverage)), coverage, label='Coverage')
-            plt.plot(np.arange(len(overlap)), overlap, label='Overlap')
-            plt.legend()
-            plt.savefig(os.path.join(debug_dir, 'Loss.png'))
-            plt.clf()
+                plt.plot(np.arange(len(coverage)), coverage, label='Coverage')
+                plt.plot(np.arange(len(overlap)), overlap, label='Overlap')
+                plt.legend()
+                plt.savefig(os.path.join(debug_dir, 'Loss.png'))
+                plt.clf()
 
         # write final mosaic
         self._render_tiles(points, oritentations, path=os.path.join(outputs_dir, f'FinalMosaic.png'))
@@ -143,11 +131,13 @@ class HausnerMosaicMaker:
         """Sample initial tile centers and orientations  cell centers and directions"""
         N = self.config.n_tiles
         h, w = self.h, self.w
-        if self.config.initial_location == 'random':
-            # points = np.stack([np.random.random(N) * h, np.random.random(N) * w], axis=1).astype(np.uint64)
+        if self.config.initial_location == 'random': # sample randomly in each are in proportion to tile sizes in it
             dense_area_proportion = (self.alpha_map == 2).sum() / self.alpha_map.size
-            num_dense_area_points = int((4 * N * dense_area_proportion) / (1 + 3 * dense_area_proportion))
+
+            # if X is the num_dense_area_points then the sparse area has X/4 and solving leads to
+            num_dense_area_points = int(4 * dense_area_proportion * N / (1 + 4 * dense_area_proportion))
             num_default_area_points = N - num_dense_area_points
+
             posible_points = np.stack(np.where(self.alpha_map == 2), axis=1)
             dense_positions = posible_points[np.random.randint(len(posible_points), size=num_dense_area_points)]
             posible_points = np.stack(np.where(self.alpha_map == 1), axis=1)
@@ -173,10 +163,10 @@ class HausnerMosaicMaker:
 
         assert np.allclose(np.linalg.norm(oritentations,axis=1), 1)
 
-        corner_directions = (oritentations @ np.stack([get_rotation_matrix(45),
-                                                       get_rotation_matrix(135),
-                                                       get_rotation_matrix(225),
-                                                       get_rotation_matrix(315)]))
+        corner_directions = (oritentations @ np.stack([ROTATION_MATRICES[45],
+                                                       ROTATION_MATRICES[135],
+                                                       ROTATION_MATRICES[225],
+                                                       ROTATION_MATRICES[315]]))
 
         corner_diameter = self.default_tile_size / np.sqrt(2)
         for i in range(centers.shape[0]):
@@ -204,15 +194,15 @@ class HausnerMosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/Tom.jpg'
-    alpha_mask_path: str = 'images/Tom_mask.png'
-    resize: int = 512
+    img_path: str = 'images/YingYang.png'
+    alpha_mask_path: str = 'images/YingYang_mask.png'
+    resize: int = 256
     n_tiles: int = 500
     n_iters: int = 50
-    delta: float = 1  # Direction field variation level
-    edge_avoidance_dilation = 2
-
+    delta: float = 1.2  # Direction field variation level
+    edge_avoidance_dilation: int = 2
     initial_location: str = 'random' # random / uniform
+    debug_freq: int = 50
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])
@@ -220,7 +210,7 @@ class MosaicConfig:
 
 
 if __name__ == '__main__':
-    device: torch.device = torch.device("cpu")
+    device: torch.device = torch.device("cuda:0")
     configs = MosaicConfig()
     mosaic_maker = HausnerMosaicMaker(configs)
     mosaic_maker.make(os.path.join("Hausner2001_outputs", configs.get_str()))

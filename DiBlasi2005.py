@@ -177,7 +177,7 @@ class MosaicTiler:
 
     def get_next_tile_position(self, position, direction_field, size_map, candidate_location_map):
         if position is not None:  # Find approximate location
-            search_diameter = self.delete_area_factor * (self.default_tile_size // size_map[position[0], position[1]]) + 2
+            search_diameter = self.delete_area_factor * (self.default_tile_size // size_map[position[0], position[1]]) * 2
             normal = direction_field[position[0], position[1]]
             position = self.find_approximate_location(position, normal, search_diameter, candidate_location_map)
 
