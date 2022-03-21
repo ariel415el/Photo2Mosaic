@@ -25,28 +25,39 @@ def plot_vector_field(vector_field, image=None, path="vector_field.png"):
     plt.clf()
 
 
-def overlay_rgb_edges(rgb_image):
-    h, w = rgb_image.shape[:2]
-    dx_image = rgb_image[:, 1:w - 1] - rgb_image[:, 0:w - 2]
-    dy_image = rgb_image[1:h - 1] - rgb_image[0:h - 2]
-    drivative_map = np.maximum(dx_image[1:-1], dy_image[:, 1:-1]).max(-1)
+def overlay_rgb_edges(image, label_map, path):
+    h, w = image.shape[:2]
+    dx_image = label_map[:, 1:w - 1] - label_map[:, 0:w - 2]
+    dy_image = label_map[1:h - 1] - label_map[0:h - 2]
+    drivative_map = np.maximum(dx_image[1:-1], dy_image[:, 1:-1])
     drivative_map = np.pad(drivative_map != 0, 1, mode='reflect').astype(np.uint8)
 
     # drivative_map = binary_dilation(drivative_map, iterations=1).astype(np.uint8)
 
-    edges_map = np.ones_like(rgb_image) * 255
-    edges_map[drivative_map != 0] = [0, 0, 0]
+    new_image = image.copy()
+    new_image[drivative_map != 0] = [0, 0, 0]
 
-    return np.minimum(rgb_image, edges_map)
+    cv2.imwrite(path, new_image)
+
+    return new_image
 
 
-def plot_vornoi_cells(vornoi_map, points, oritentations, avoidance_map, path='vornoi_cells.png'):
-    image = color.label2rgb(vornoi_map)
-    image = overlay_rgb_edges(image)
+def plot_label_map(label_map, points, oritentations=None, avoidance_map=None, path='vornoi_cells.png'):
+    image = color.label2rgb(label_map)
+    # image = overlay_rgb_edges(image)
+
+    w, h = image.shape[:2]
+
+    plt.figure(figsize=(h / 10, w / 10))
     plt.imshow(image)
-    plt.scatter(points[:, 1], points[:, 0], s=1, c='k')
-    plt.imshow(avoidance_map * 255, alpha=0.5)
+    plt.scatter(points[:, 1], points[:, 0], s=4, c='k')
 
-    plt.quiver(points[:, 1], points[:, 0], oritentations[:, 1], oritentations[:, 0], angles='xy')
+    if avoidance_map is not None:
+        plt.imshow(avoidance_map * 255, alpha=0.5)
+
+    if oritentations is not None:
+        plt.quiver(points[:, 1], points[:, 0], oritentations[:, 1], oritentations[:, 0], angles='xy')
+
+    plt.tight_layout()
     plt.savefig(path)
     plt.clf()

@@ -38,7 +38,7 @@ class MosaicDesigner:
             edge_map = utils.get_edges_map_canny(cv2.cvtColor(size_map * 127, cv2.COLOR_GRAY2BGR))
         elif os.path.exists(self.edges_reference):
             edge_map = cv2.imread(self.edges_reference, cv2.IMREAD_GRAYSCALE)
-            edge_map = utils.aspect_ratio_resize(edge_map, image.shape[0], mode=cv2.INTER_NEAREST)
+            edge_map = utils.set_image_height_without_distortion(edge_map, image.shape[0], mode=cv2.INTER_NEAREST)
             edge_map[edge_map < 127] = 0
             edge_map[edge_map >= 127] = 1
             # edge_map = binary_opening(edge_map, iterations=6).astype(np.uint8)

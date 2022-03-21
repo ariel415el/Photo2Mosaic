@@ -24,9 +24,15 @@ Input image             |  Canny edgemap over binary mask
 Centroidal Vornoi diagram  |  Final mosaic Coverage: 86.3% Overlap: 4.2%
 <img src="readme_images/Diblasi2005/Level_matrix.png" width="300"/> | <img src="readme_images/Diblasi2005/FinalMosaic.png" width="300"/> 
 
+# Automated pebble mosaic stylization of images, (Doyle 2019)
+
+
 ### TODO:
 - Cut tiles according to predefined strategy and not by order of placement
 - Consider trimming tiles by the offset-levelmap
+
+# Repositories credits
+- https://github.com/aleenawatson/SLIC_superpixels
 
 # Cite
 @inproceedings{hausner2001simulating,
@@ -44,5 +50,16 @@ article{di2005artificial,
   number={6},
   pages={373--383},
   year={2005},
+  publisher={Springer}
+}
+
+@article{doyle2019automated,
+  title={Automated pebble mosaic stylization of images},
+  author={Doyle, Lars and Anderson, Forest and Choy, Ehren and Mould, David},
+  journal={Computational Visual Media},
+  volume={5},
+  number={1},
+  pages={33--44},
+  year={2019},
   publisher={Springer}
 }

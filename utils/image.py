@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 
-def aspect_ratio_resize(img, resize, mode=None):
+def set_image_height_without_distortion(img, resize, mode=None):
     return cv2.resize(img, (int(resize * img.shape[1] / img.shape[0]), resize), interpolation=mode)
 
 

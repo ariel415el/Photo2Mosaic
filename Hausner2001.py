@@ -7,6 +7,7 @@ from scipy.ndimage import binary_dilation, binary_erosion
 from tqdm import tqdm
 
 from utils import *
+from utils.tesselation import VornoiTessealtion
 
 ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, 135, 225, 315]}
 
@@ -17,54 +18,6 @@ def get_avoidance_map(edges_map, dilation_iterations=0):
     # mask = binary_erosion(mask, iterations=1).astype(np.uint8)
 
     return edges_map
-
-
-def update_point_locations(points, oritentations, direction_field, avoidance_map, alpha_map):
-    """
-    Iterative approach for computing centridal Vornoi cells using brute force equivalet of the Z-buffer algorithm
-    For point in "points" compute a distance map now argmin over all maps to get a single map with index of
-    closest point to each coordinate.
-    The metric is used is the L1 distance with axis rotated by the points' orientation
-    """
-
-    h, w = direction_field.shape[:2]
-    xx, yy = np.meshgrid(np.arange(w), np.arange(h))
-    coords = np.stack([yy, xx], axis=-1)  # coords[a ,b] = [b,a]
-
-    diffs = coords - points[:, None, None]
-
-    basis1 = oritentations[:, None, None]
-    basis2 = (oritentations @ ROTATION_MATRICES[90])[:, None, None]
-
-    # Heavy computation on GPU
-    with torch.no_grad():
-        gaps = torch.from_numpy(diffs).to(device)
-        basis1 = torch.from_numpy(basis1).to(device)  # u
-        basis2 = torch.from_numpy(basis2).to(device)  # v
-
-        # L1_u-v((x,y),(x0,y0)) = |<(x,y),u> - <(x0,y0),u>| + |<(x,y),v> - <(x0,y0),v>| = |<(x,y)-(x0,y0),u>| + |<(x,y)-(x0,y0),u>|
-        distance_maps = torch.abs((gaps * basis1).sum(-1)) + torch.abs((gaps * basis2).sum(-1))
-        distance_maps = distance_maps.cpu().numpy()
-
-    for v in np.unique(alpha_map):
-        distance_maps[alpha_map[points[:, 0], points[:, 1]] == v] *= v
-
-    vornoi_map = np.argmin(distance_maps, axis=0)
-
-    # Mark edges as ex-teritory (push cells away from edges)
-    vornoi_map[avoidance_map == 1] = vornoi_map.max() + 2
-
-    # ensure non-empty cells (points may not be closest to itself since argmax between same values is arbitraray)
-    vornoi_map[points[:, 0], points[:, 1]] = np.arange(len(points))
-
-    # Move points to be the centers of their according vornoi cells
-    centers = np.array([coords[vornoi_map==i].mean(0) for i in range(len(points))]).astype(np.uint64)
-
-    # update orientations using vector field
-    oritentations = direction_field[centers[:, 0].astype(int), centers[:, 1].astype(int)]
-
-    return centers, oritentations, vornoi_map
-
 
 def create_direction_field(edge_map):
     """
@@ -101,58 +54,15 @@ class HausnerMosaicMaker:
 
         direction_field = create_direction_field(edge_map)
 
-        points, oritentations = self._get_initial_state()
-
-        coverage = []
-        overlap = []
-        for i in tqdm(range(self.config.n_iters)):
-            points, oritentations, debug_vornoi_diagram = update_point_locations(points, oritentations, direction_field, avoidance_map, self.alpha_map)
-
-            if i % self.config.debug_freq == 0:
-                plot_vornoi_cells(debug_vornoi_diagram, points, oritentations, avoidance_map, path=os.path.join(debug_dir, f'Vornoi_diagram_{i}.png'))
-                coverage_percentage, overlap_percentage = self._render_tiles(points, oritentations, path=os.path.join(debug_dir, f'Mosaic_{i}.png'))
-                coverage.append(coverage_percentage)
-                overlap.append(overlap_percentage)
-
-                plt.plot(np.arange(len(coverage)), coverage, label='Coverage')
-                plt.plot(np.arange(len(overlap)), overlap, label='Overlap')
-                plt.legend()
-                plt.savefig(os.path.join(debug_dir, 'Loss.png'))
-                plt.clf()
+        vornoi_maker = VornoiTessealtion(self.config.n_tiles, self.alpha_map, self.config.initial_location, torch_device=device)
+        centers, oritentations, _ = vornoi_maker.tesselate(direction_field, avoidance_map, self.config.n_iters, debug_dir=debug_dir)
 
         # write final mosaic
-        self._render_tiles(points, oritentations, path=os.path.join(outputs_dir, f'FinalMosaic.png'))
+        self._render_tiles(centers, oritentations, path=os.path.join(outputs_dir, f'FinalMosaic.png'))
 
         # Debug code:
         plot_vector_field(direction_field, self.image, path=os.path.join(debug_dir, 'VectorField.png'))
         cv2.imwrite(os.path.join(debug_dir, 'EdgeMap.png'), avoidance_map * 255)
-
-    def _get_initial_state(self):
-        """Sample initial tile centers and orientations  cell centers and directions"""
-        N = self.config.n_tiles
-        h, w = self.h, self.w
-        if self.config.initial_location == 'random': # sample randomly in each are in proportion to tile sizes in it
-            dense_area_proportion = (self.alpha_map == 2).sum() / self.alpha_map.size
-
-            # if X is the num_dense_area_points then the sparse area has X/4 and solving leads to
-            num_dense_area_points = int(4 * dense_area_proportion * N / (1 + 4 * dense_area_proportion))
-            num_default_area_points = N - num_dense_area_points
-
-            posible_points = np.stack(np.where(self.alpha_map == 2), axis=1)
-            dense_positions = posible_points[np.random.randint(len(posible_points), size=num_dense_area_points)]
-            posible_points = np.stack(np.where(self.alpha_map == 1), axis=1)
-            default_positions = posible_points[np.random.randint(len(posible_points), size=num_default_area_points)]
-            points = np.concatenate([default_positions, dense_positions], axis=0)
-
-        else: # uniform
-            s = int(np.ceil(np.sqrt(N)))
-            y, x = np.meshgrid(np.linspace(1, h - 1, s), np.linspace(1, w - 1, s))
-            points = np.stack([y.flatten(), x.flatten()], axis=1).astype(np.uint64)[:N]
-
-        oritentations = np.random.rand(N, 2)
-        oritentations /= np.linalg.norm(oritentations, axis=1, keepdims=True)
-
-        return points, oritentations
 
     def _render_tiles(self, centers, oritentations, path='mosaic.png'):
         """
@@ -198,7 +108,7 @@ class MosaicConfig:
     alpha_mask_path: str = 'images/YingYang_mask.png'
     resize: int = 256
     n_tiles: int = 500
-    n_iters: int = 50
+    n_iters: int = 10
     delta: float = 1.2  # Direction field variation level
     edge_avoidance_dilation: int = 2
     initial_location: str = 'random' # random / uniform
