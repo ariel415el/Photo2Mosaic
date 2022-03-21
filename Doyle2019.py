@@ -38,9 +38,12 @@ class SLICMosaicMaker:
             mask = (vornoi_diagram == i).astype(np.uint8)
             contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
             for cnt in contours:
-                epsilon = self.config.contour_approx_factor * cv2.arcLength(cnt, True)
-                cnt = cv2.approxPolyDP(cnt, epsilon, True)
-
+                if self.config.contour_approx_method == 'poly':
+                    epsilon = self.config.contour_approx_param * cv2.arcLength(cnt, True)
+                    cnt = cv2.approxPolyDP(cnt, epsilon, True)
+                elif self.config.contour_approx_method == 'fourier':
+                    cnt = simplify_contour(cnt, self.config.contour_approx_param)
+                    
                 color = self.image[int(centers[i][0]), int(centers[i][1])]
 
                 mosaic = cv2.drawContours(mosaic, [cnt], -1, color=color.tolist(), thickness=cv2.FILLED)
@@ -61,12 +64,13 @@ class SLICMosaicMaker:
 class MosaicConfig:
     img_path: str = 'images/Elon.jpg'
     size_map_path: str = 'images/Elon_mask.png'
-    resize: int = 1024
-    n_tiles: int = 8000
+    resize: int = 512
+    n_tiles: int = 2000
     n_iters: int = 10
     init_mode: str = "uniform"   # random / uniform
-    contour_approx_factor: float = 0.025  # How much error to allow between contour and apprximation
     m: int = 15
+    contour_approx_method: str = "fourier" # 'fourier'/'poly'
+    contour_approx_param: float = 0.025  # coefficient cutoff percent / allowed error percent
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])

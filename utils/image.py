@@ -76,3 +76,22 @@ def normalize_vector_field(vector_field):
         vector_field[nans] = random_direction
 
     return vector_field
+
+
+def simplify_contour(cnt, factor=0.01):
+    """
+    Simplifies a contour by trimming its fourier coefficients
+    :param: cnt: opencv contour: an numpy array of shape (n,1,2) indicating conour coordinates
+    """
+    cnt_complex = cnt[:,0,0] + 1j * cnt[:,0,1]
+
+    fourier = np.fft.fftshift(np.fft.fft(cnt_complex))
+
+    spectrum = np.abs(fourier)
+    fourier[spectrum < spectrum.max() * factor] = 0
+
+    new_cnt_complex = np.fft.ifft(np.fft.ifftshift(fourier))
+
+    new_cnt = np.stack([new_cnt_complex.real, new_cnt_complex.imag], axis=-1).astype(int)[:, None]
+
+    return new_cnt
