@@ -8,7 +8,7 @@ from scipy.ndimage.measurements import label as scipy_label
 import utils
 from utils import get_rotation_matrix, plot_label_map, set_image_height_without_distortion
 
-ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [90]}
+ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, -45]}
 
 
 
@@ -38,8 +38,8 @@ class VornoiTessealtion:
 
         diffs = coords - self.centers[:, None, None]
 
-        basis1 = self.oritentations[:, None, None]
-        basis2 = (self.oritentations @ ROTATION_MATRICES[90])[:, None, None]
+        basis1 = (self.oritentations @ ROTATION_MATRICES[-45])[:, None, None]
+        basis2 = (self.oritentations @ ROTATION_MATRICES[45])[:, None, None]
 
         # Heavy computation on GPU
         with torch.no_grad():
