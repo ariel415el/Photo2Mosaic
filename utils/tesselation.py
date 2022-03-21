@@ -11,9 +11,6 @@ from utils import get_rotation_matrix, plot_label_map, set_image_height_without_
 ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, -45]}
 
 
-
-
-
 class VornoiTessealtion:
     """
     iteratively map each point
@@ -33,10 +30,9 @@ class VornoiTessealtion:
         """
 
         h, w = direction_field.shape[:2]
-        xx, yy = np.meshgrid(np.arange(w), np.arange(h))
-        coords = np.stack([yy, xx], axis=-1)  # coords[a ,b] = [b,a]
+        yx_field = np.stack(np.meshgrid(np.arange(w), np.arange(h)), axis=2)[..., ::-1]
 
-        diffs = coords - self.centers[:, None, None]
+        diffs = yx_field - self.centers[:, None, None]
 
         basis1 = (self.oritentations @ ROTATION_MATRICES[-45])[:, None, None]
         basis2 = (self.oritentations @ ROTATION_MATRICES[45])[:, None, None]
@@ -57,13 +53,13 @@ class VornoiTessealtion:
         vornoi_map = np.argmin(distance_maps, axis=0)
 
         # Mark edges as ex-teritory (push cells away from edges)
-        vornoi_map[avoidance_map == 1] = vornoi_map.max() + 2
+        vornoi_map[avoidance_map == 1] = -1
 
         # ensure non-empty cells (points may not be closest to itself since argmax between same values is arbitraray)
         vornoi_map[self.centers[:, 0], self.centers[:, 1]] = np.arange(len(self.centers))
 
         # Move points to be the centers of their according vornoi cells
-        self.centers = np.array([coords[vornoi_map == i].mean(0) for i in range(len(self.centers))]).astype(np.uint64)
+        self.centers = np.array([yx_field[vornoi_map == i].mean(0) for i in range(len(self.centers))]).astype(np.uint64)
 
         # update orientations using vector field
         self.oritentations = direction_field[self.centers[:, 0].astype(int), self.centers[:, 1].astype(int)]

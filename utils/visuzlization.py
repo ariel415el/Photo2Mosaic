@@ -48,7 +48,7 @@ def plot_label_map(label_map, points, oritentations=None, avoidance_map=None, pa
 
     w, h = image.shape[:2]
 
-    plt.figure(figsize=(h / 10, w / 10))
+    plt.figure(figsize=(h / 50, w / 50))
     plt.imshow(image)
     plt.scatter(points[:, 1], points[:, 0], s=4, c='k')
 

@@ -1,9 +1,11 @@
 import os.path
 from dataclasses import dataclass
+
+import cv2
 import torch
 
 from utils import *
-from utils.tesselation import SLIC
+from utils.tesselation import SLIC, VornoiTessealtion
 
 
 class SLICMosaicMaker:
@@ -32,15 +34,15 @@ class SLICMosaicMaker:
         """
         mosaic = np.ones_like(self.image) * 127
         coverage_map = np.zeros(self.image.shape[:2])
-        labels = np.unique(vornoi_diagram)[1:]  # first label (-1) is for edges
-        for i, label in enumerate(labels):
-            mask = (vornoi_diagram == label).astype(np.uint8)
+        for i in range(len(centers)):
+            mask = (vornoi_diagram == i).astype(np.uint8)
             contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
             for cnt in contours:
                 epsilon = self.config.contour_approx_factor * cv2.arcLength(cnt, True)
                 cnt = cv2.approxPolyDP(cnt, epsilon, True)
 
                 color = self.image[int(centers[i][0]), int(centers[i][1])]
+
                 mosaic = cv2.drawContours(mosaic, [cnt], -1, color=color.tolist(), thickness=cv2.FILLED)
 
                 # update overidden pixels
@@ -55,16 +57,15 @@ class SLICMosaicMaker:
 
         return coverage_percentage, overlap_percentage
 
-
 @dataclass
 class MosaicConfig:
     img_path: str = 'images/Elon.jpg'
     size_map_path: str = 'images/Elon_mask.png'
-    resize: int = 600
-    n_tiles: int = 1200
+    resize: int = 1024
+    n_tiles: int = 8000
     n_iters: int = 10
-    init_mode: str = "random"   # random / uniform
-    contour_approx_factor: float = 0.02  # How much error to allow between contour and apprximation
+    init_mode: str = "uniform"   # random / uniform
+    contour_approx_factor: float = 0.025  # How much error to allow between contour and apprximation
     m: int = 15
 
     def get_str(self):
@@ -76,5 +77,5 @@ if __name__ == '__main__':
     device: torch.device = torch.device("cpu")
     configs = MosaicConfig()
     mosaic_maker = SLICMosaicMaker(configs)
-    mosaic_maker.make(os.path.join("SLIC_outputs", configs.get_str()))
+    mosaic_maker.make(os.path.join("outputs", "Doyle2019", configs.get_str()))
 

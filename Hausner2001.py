@@ -3,8 +3,7 @@ from dataclasses import dataclass
 
 import torch
 from scipy import ndimage
-from scipy.ndimage import binary_dilation, binary_erosion
-from tqdm import tqdm
+from scipy.ndimage import binary_dilation
 
 from utils import *
 from utils.tesselation import VornoiTessealtion
@@ -104,10 +103,10 @@ class HausnerMosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/YingYang.png'
-    alpha_mask_path: str = 'images/YingYang_mask.png'
+    img_path: str = 'images/Elon.jpg'
+    alpha_mask_path: str = 'images/Elon_mask.png'
     resize: int = 256
-    n_tiles: int = 500
+    n_tiles: int = 512
     n_iters: int = 10
     delta: float = 1.2  # Direction field variation level
     edge_avoidance_dilation: int = 2
@@ -123,5 +122,5 @@ if __name__ == '__main__':
     device: torch.device = torch.device("cuda:0")
     configs = MosaicConfig()
     mosaic_maker = HausnerMosaicMaker(configs)
-    mosaic_maker.make(os.path.join("Hausner2001_outputs", configs.get_str()))
+    mosaic_maker.make(os.path.join("outputs", "Hausner2001", configs.get_str()))
 
