@@ -35,6 +35,7 @@ class FaissNNModule:
 
         return NNs
 
+
 class FaissFlat(FaissNNModule):
     def __str__(self):
         return "FaissFlat(" + ("GPU" if self.use_gpu else "CPU") + ")"
@@ -74,6 +75,7 @@ class PytorchNN:
 
     def __str__(self):
         return "PytorchNN(" + ("GPU" if self.use_gpu else "CPU") + f",alpha={self.alpha})"
+
 
 class PytorchNNLowMemory:
     def __init__(self, batch_size=256, alpha=None, use_gpu=False, metric='l2'):
