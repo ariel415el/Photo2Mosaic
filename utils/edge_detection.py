@@ -42,3 +42,4 @@ def get_edges_map_canny(image, blur_size=7, sigma=None, t1=50, t2=100):
     mask[mask==255] = 1
 
     return mask
+

@@ -2,7 +2,6 @@ import os.path
 from dataclasses import dataclass
 
 import torch
-from scipy import ndimage
 from scipy.ndimage import binary_dilation
 
 from utils import *
@@ -19,20 +18,6 @@ def get_avoidance_map(edges_map, dilation_iterations=0):
 
     return edges_map
 
-def create_direction_field(edge_map):
-    """
-    Create a direction vector field from edges in the edges_map.
-    Compute edges map its distance transform and then its gradient map.
-    Normalize gradient vector to have unit norm.
-    """
-    dist_transform = ndimage.distance_transform_edt(edge_map == 0)
-    dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 0)
-    direction_field = np.stack(np.gradient(dist_transform), axis=2)
-    direction_field = cv2.GaussianBlur(direction_field, (5, 5), 0)
-    direction_field = normalize_vector_field(direction_field)
-
-    return direction_field
-
 
 class HausnerMosaicMaker:
     @staticmethod
@@ -41,7 +26,7 @@ class HausnerMosaicMaker:
 
         avoidance_map = get_avoidance_map(edge_map, config.edge_avoidance_dilation)
 
-        direction_field = create_direction_field(edge_map)
+        direction_field, _ = create_direction_field(edge_map)
 
         vornoi_maker = VornoiTessealtion(config.n_tiles, density_map, config.init_mode, torch_device=device)
         centers, oritentations, _ = vornoi_maker.tesselate(direction_field, avoidance_map, config.n_iters, debug_dir=debug_dir)

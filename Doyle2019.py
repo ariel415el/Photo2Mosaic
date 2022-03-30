@@ -1,11 +1,10 @@
 import os.path
 from dataclasses import dataclass
 
-import cv2
 import torch
 
 from utils import *
-from utils.tesselation import SLIC, VornoiTessealtion
+from utils.tesselation import SLIC
 
 
 class SLICMosaicMaker:

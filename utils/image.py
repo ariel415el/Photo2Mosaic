@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from scipy import ndimage
 
 
 def set_image_height_without_distortion(img, resize, mode=None):
@@ -21,6 +22,20 @@ def get_rotation_matrix(theta):
     c, s = np.cos(np.radians(theta)), np.sin(np.radians(theta))
     return np.array(((c, -s), (s, c)))
 
+
+def create_direction_field(edge_map):
+    """
+    Create a direction vector field from edges in the edges_map.
+    Compute edges map its distance transform and then its gradient map.
+    Normalize gradient vector to have unit norm.
+    """
+    dist_transform = ndimage.distance_transform_edt(edge_map == 0)
+    dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 0)
+    direction_field = np.stack(np.gradient(dist_transform), axis=2)
+    direction_field = cv2.GaussianBlur(direction_field, (5, 5), 0)
+    direction_field = normalize_vector_field(direction_field)
+
+    return direction_field, dist_transform
 
 def normalize_vector_field(vector_field):
     """

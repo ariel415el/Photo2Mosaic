@@ -8,12 +8,12 @@ from tqdm import tqdm
 
 import cv2
 import numpy as np
-import torch
 from scipy import ndimage
 from scipy.signal import convolve2d
 from scipy.ndimage.measurements import label
 
 import utils
+import utils.edge_detection
 
 FREE_SPACE_LABEL = 2
 ROTATION_MATRICES={x: utils.get_rotation_matrix(x) for x in [45, 90]}
@@ -21,21 +21,20 @@ ROTATION_MATRICES={x: utils.get_rotation_matrix(x) for x in [45, 90]}
 
 class MosaicDesigner:
     """Designs the level lines map and the direction field that is later used for tiling the image according to DiBlasi2005"""
-    def __init__(self, default_tile_size, edges_reference, aligned_background, extra_level_gap, dist_transform_blur_params):
+    def __init__(self, default_tile_size, edges_reference, aligned_background, extra_level_gap):
         self.default_tile_size = default_tile_size
         self.edges_reference = edges_reference
         self.aligned_background = aligned_background
         self.extra_level_gap = extra_level_gap
-        self.dist_transform_blur_params = dist_transform_blur_params
 
-    def get_edges_map(self, image, size_map):
+    def get_edges_map(self, image, density_map):
         """Get an edge map in 3 ways:
          1: From the image itself using an edge detector
-         2: Use the contour of the mask (size_map) as edges
+         2: Use the contour of the mask (density_map) as edges
          3: Use a predefined edge image. Possibly refine it to its skeleton
          """
-        if self.edges_reference == 'mask' and size_map is not None:
-            edge_map = utils.get_edges_map_canny(cv2.cvtColor(size_map * 127, cv2.COLOR_GRAY2BGR))
+        if self.edges_reference == 'mask' and density_map is not None:
+            edge_map = utils.edge_detection.get_edges_map_canny(cv2.cvtColor(density_map * 127, cv2.COLOR_GRAY2BGR))
         elif os.path.exists(self.edges_reference):
             edge_map = cv2.imread(self.edges_reference, cv2.IMREAD_GRAYSCALE)
             edge_map = utils.set_image_height_without_distortion(edge_map, image.shape[0], mode=cv2.INTER_NEAREST)
@@ -43,11 +42,11 @@ class MosaicDesigner:
             edge_map[edge_map >= 127] = 1
             edge_map = skeletonize(edge_map).astype(np.uint8)
         else:
-            edge_map = utils.get_edges_map_canny(image, blur_size=7, sigma=5, t1=100, t2=150)
+            edge_map = utils.edge_detection.get_edges_map_canny(image, blur_size=7, sigma=5, t1=100, t2=150)
 
         return edge_map
 
-    def get_level_matrix_from_dist_map(self, dist_map, size_map, offset=0.5):
+    def get_level_matrix_from_dist_map(self, dist_map, density_map, offset=0.5):
         """
         Create binary mask where pixels in periodic distances from edges are turned on.
         Level lines frequency is determined by the size map.
@@ -56,36 +55,28 @@ class MosaicDesigner:
         dist_map = dist_map.astype(int)
         level_matrix = np.zeros_like(dist_map).astype(np.uint8)
         default_levels_gap = self.default_tile_size + self.extra_level_gap
-        for factor in np.unique(size_map):
+        for factor in np.unique(density_map):
             gap_size = default_levels_gap // factor
             mask = np.remainder(dist_map, gap_size) == int(offset * gap_size)
-            mask = np.logical_and(mask, size_map == factor)
+            mask = np.logical_and(mask, density_map == factor)
             level_matrix[mask] = FREE_SPACE_LABEL
         return level_matrix
 
-    def create_gradient_and_level_matrix(self, edge_map, size_map):
+    def create_gradient_and_level_matrix(self, edge_map, density_map):
         """
         Compute distance transform from edges, return normalized gradient of distances
         Compute a level map from integer modolu of distances
         """
-        dist_transform = ndimage.distance_transform_edt(edge_map == 0)
+        direction_field, dist_transform = utils.create_direction_field(edge_map)
 
-        if self.dist_transform_blur_params is not None:
-            k, s = self.dist_transform_blur_params
-            dist_transform = cv2.GaussianBlur(dist_transform, (k, k), s)
-        level_matrix = self.get_level_matrix_from_dist_map(dist_transform, size_map, offset=0.5)
-
-        # level_matrix += skeletonize(edge_map).astype(np.uint8) * FREE_SPACE_LABEL add the edges themselves as a leveline
-
-        direction_field = np.stack(np.gradient(dist_transform), axis=2)
-        direction_field = utils.normalize_vector_field(direction_field)
+        level_matrix = self.get_level_matrix_from_dist_map(dist_transform, density_map, offset=0.5)
 
         # Use default background
         if self.aligned_background:
-            if np.all(size_map):
+            if np.all(density_map):
                 raise UserWarning("aligned_background should be used only with a non-empty mask")
             # Create separate directions and levels for background
-            dilated_foreground = binary_dilation(size_map != 1, iterations=self.default_tile_size * 4)
+            dilated_foreground = binary_dilation(density_map != 1, iterations=self.default_tile_size * 4)
             bg_level_matrix = np.zeros_like(level_matrix)
 
             # Set BG level lines to horizontal lines
@@ -100,13 +91,14 @@ class MosaicDesigner:
 
         return direction_field, level_matrix
 
-    def get_design(self, image, size_map, debug_dir):
-        edge_map = self.get_edges_map(image, size_map)
-        direction_field, level_matrix = self.create_gradient_and_level_matrix(edge_map, size_map)
+    def get_design(self, image, density_map, debug_dir):
+        edge_map = self.get_edges_map(image, density_map)
+        
+        direction_field, level_matrix = self.create_gradient_and_level_matrix(edge_map, density_map)
 
         # Dumb debug images
         utils.plot_vector_field(direction_field, edge_map * 255, path=os.path.join(debug_dir, 'VectorField.png'))
-        cv2.imwrite(os.path.join(debug_dir, 'size_map.png'), size_map * 127)
+        cv2.imwrite(os.path.join(debug_dir, 'density_map.png'), density_map * 127)
         cv2.imwrite(os.path.join(debug_dir, 'EdgeMap.png'), edge_map * 255)
         cv2.imwrite(os.path.join(debug_dir, 'Level_matrix.png'), level_matrix * 127)
 
@@ -171,9 +163,9 @@ class MosaicTiler:
 
         return track_maps
 
-    def get_next_tile_position(self, position, direction_field, size_map, candidate_location_map):
+    def get_next_tile_position(self, position, direction_field, density_map, candidate_location_map):
         if position is not None:  # Find approximate location
-            search_diameter = self.delete_area_factor * (self.default_tile_size // size_map[position[0], position[1]]) * 2
+            search_diameter = self.delete_area_factor * (self.default_tile_size // density_map[position[0], position[1]]) * 2
             normal = direction_field[position[0], position[1]]
             position = self.find_approximate_location(position, normal, search_diameter, candidate_location_map)
 
@@ -192,11 +184,11 @@ class MosaicTiler:
 
         return position
 
-    def render_tiles(self, image, size_map, direction_field, level_matrix, debug_dir):
+    def render_tiles(self, image, density_map, direction_field, level_matrix, debug_dir):
         """
         Render a mosaic: place oritented squares on a canvas with size defined by the a mask
         :param: image: Used to get the colors of the tiles
-        :param: size_map: defines the size of the tiles placed in each location
+        :param: density_map: defines the size of the tiles placed in each location
         :param: image: Dictates the orientations of the placed tiles
         :param: image: A binary mask that instructs where to put tiles
         """
@@ -215,12 +207,12 @@ class MosaicTiler:
             center = None
             while (track_map == FREE_SPACE_LABEL).any():
 
-                center = self.get_next_tile_position(center, direction_field, size_map, track_map)
+                center = self.get_next_tile_position(center, direction_field, density_map, track_map)
 
                 # Get tile details
                 normal = direction_field[center[0], center[1]]
                 tile_color = color_map[center[0], center[1]].tolist()
-                local_tile_size = self.default_tile_size / size_map[center[0], center[1]]
+                local_tile_size = self.default_tile_size / density_map[center[0], center[1]]
                 contour = MosaicTiler.get_tile_rectangle_contour(center, local_tile_size, normal, self.aspect_ratio)
 
                 # Draw oriented tile
@@ -255,14 +247,14 @@ class MosaicTiler:
 
 
 def make_mosaic(config, outputs_dir):
-    image, size_map = utils.load_images(*config.get_image_configs())
+    image, density_map = utils.load_images(*config.get_image_configs())
     utils.create_output_dirs(outputs_dir)
 
     designer = MosaicDesigner(*config.get_design_configs())
-    direction_field, level_matrix = designer.get_design(image, size_map, os.path.join(outputs_dir, "debug"))
+    direction_field, level_matrix = designer.get_design(image, density_map, os.path.join(outputs_dir, "debug"))
 
     tiler = MosaicTiler(*config.get_tiling_configs())
-    mosaic, coverage_percentage, overlap_percentage = tiler.render_tiles(image, size_map, direction_field, level_matrix, debug_dir=os.path.join(outputs_dir, f'debug'))
+    mosaic, coverage_percentage, overlap_percentage = tiler.render_tiles(image, density_map, direction_field, level_matrix, debug_dir=os.path.join(outputs_dir, f'debug'))
 
     cv2.imwrite(os.path.join(outputs_dir, 'FinalMosaic.png'), mosaic)
 
@@ -270,18 +262,17 @@ def make_mosaic(config, outputs_dir):
 @dataclass
 class MosaicConfig:
     # io
-    img_path: str = 'images/images/Alexander_body.jpg'
-    size_map_path: str = None
-    resize: int = 1024
+    img_path: str = 'images/images/Alexander.jpg'
+    density_map_path: str = None
+    resize: int = 512
 
     # Common
-    default_tile_size = 10
+    default_tile_size = 7
 
     # Design
     edges_reference: str = 'image'   # path/image/mask compute edges from image itself or from the mask
     aligned_background = False  # Reauires mask. mask == 2 is the foreground
     extra_level_gap = 0  # the gap between level lines will be tile_size + levels_gap
-    dist_transform_blur_params = (5, 1)
     
     # Tiling
     delete_area_factor:float = 2.  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
@@ -292,10 +283,10 @@ class MosaicConfig:
     debug_freq = 100
 
     def get_image_configs(self):
-        return self.img_path, self.size_map_path, self.resize
+        return self.img_path, self.density_map_path, self.resize
 
     def get_design_configs(self):
-        return self.default_tile_size, self.edges_reference, self.aligned_background, self.extra_level_gap, self.dist_transform_blur_params
+        return self.default_tile_size, self.edges_reference, self.aligned_background, self.extra_level_gap
 
     def get_tiling_configs(self):
         return self.default_tile_size, self.delete_area_factor, self.cement_color, self.aspect_ratio, self.debug_freq
@@ -304,7 +295,7 @@ class MosaicConfig:
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])
         name = f"{im_name}_R-{self.resize}_T-{self.default_tile_size}_D-{self.delete_area_factor}"
         name += f"ER-{'EdgeMap' if os.path.exists(self.edges_reference) else self.edges_reference}"
-        name += f"SM" if self.size_map_path is not None else ''
+        name += f"SM" if self.density_map_path is not None else ''
         name += f"AB" if self.aligned_background else ''
 
         return name
