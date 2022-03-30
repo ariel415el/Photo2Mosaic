@@ -43,7 +43,7 @@ class SLICMosaicMaker:
                     cnt = cv2.approxPolyDP(cnt, epsilon, True)
                 elif self.config.contour_approx_method == 'fourier':
                     cnt = simplify_contour(cnt, self.config.contour_approx_param)
-                    
+
                 color = self.image[int(centers[i][0]), int(centers[i][1])]
 
                 mosaic = cv2.drawContours(mosaic, [cnt], -1, color=color.tolist(), thickness=cv2.FILLED)
@@ -62,15 +62,15 @@ class SLICMosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/Elon.jpg'
-    size_map_path: str = 'images/Elon_mask.png'
+    img_path: str = 'images/images/Alexander_body.jpg'
+    size_map_path: str = None
     resize: int = 512
-    n_tiles: int = 2000
+    n_tiles: int = 500
     n_iters: int = 10
-    init_mode: str = "uniform"   # random / uniform
-    m: int = 15
-    contour_approx_method: str = "fourier" # 'fourier'/'poly'
-    contour_approx_param: float = 0.025  # coefficient cutoff percent / allowed error percent
+    init_mode: str = "uniform"              # random / uniform
+    m: int = 1                              # smaller m means stricter color adherence
+    contour_approx_method: str = "fourier"  # 'fourier'/'poly'
+    contour_approx_param: float = 0.001     # coefficient cutoff percent / allowed error percent
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])

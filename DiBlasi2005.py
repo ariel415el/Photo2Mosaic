@@ -41,13 +41,9 @@ class MosaicDesigner:
             edge_map = utils.set_image_height_without_distortion(edge_map, image.shape[0], mode=cv2.INTER_NEAREST)
             edge_map[edge_map < 127] = 0
             edge_map[edge_map >= 127] = 1
-            # edge_map = binary_opening(edge_map, iterations=6).astype(np.uint8)
-            # edge_map = cv2.GaussianBlur(edge_map, (9, 9), 9)
             edge_map = skeletonize(edge_map).astype(np.uint8)
-            # canny = get_edges_map_canny(image, sigma=0.5)
-            # edge_map = np.where(edge_map == 1, canny, 0)
         else:
-            edge_map = utils.get_edges_map_canny(image, blur_size=5, sigma=1, t1=100, t2=150)
+            edge_map = utils.get_edges_map_canny(image, blur_size=7, sigma=5, t1=100, t2=150)
 
         return edge_map
 
@@ -142,7 +138,7 @@ class MosaicTiler:
         for offset in all_offsets:
             point = center + offset
             point = np.minimum(point, np.array(candidate_location_map.shape) - 1)
-            point = np.maximum(point, np.array([0, 0]))
+            point = np.maximum(point, np.array([0, 0])).astype(int)
             if candidate_location_map[point[0], point[1]] == FREE_SPACE_LABEL:
                 return point
         return None
@@ -207,6 +203,7 @@ class MosaicTiler:
         mosaic = np.ones_like(image) * self.cement_color
         coverage_map = np.zeros(image.shape[:2])
 
+        # Use quantized colors
         color_map = cv2.GaussianBlur(image, (7, 7), 0)
         color_map = (color_map // 32) * 32
 
@@ -273,26 +270,26 @@ def make_mosaic(config, outputs_dir):
 @dataclass
 class MosaicConfig:
     # io
-    img_path: str = 'images/Portrait.png'
-    size_map_path: str = 'images/Portrait_mask.png'
-    resize: int = 512
+    img_path: str = 'images/images/Alexander_body.jpg'
+    size_map_path: str = None
+    resize: int = 1024
 
     # Common
     default_tile_size = 10
 
     # Design
-    edges_reference: str = 'mask'   # path/image/mask compute edges from image itself or from the mask
+    edges_reference: str = 'image'   # path/image/mask compute edges from image itself or from the mask
     aligned_background = False  # Reauires mask. mask == 2 is the foreground
     extra_level_gap = 0  # the gap between level lines will be tile_size + levels_gap
     dist_transform_blur_params = (5, 1)
     
     # Tiling
-    delete_area_factor = 2  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
-    cement_color = 127
-    aspect_ratio = 2
+    delete_area_factor:float = 2.  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
+    cement_color: int = 127
+    aspect_ratio: float = 2
 
     # debug
-    debug_freq = 1
+    debug_freq = 100
 
     def get_image_configs(self):
         return self.img_path, self.size_map_path, self.resize
@@ -316,4 +313,4 @@ if __name__ == '__main__':
     np.random.seed(0)
     random.seed(0)
     mosaic_configs = MosaicConfig()
-    make_mosaic(mosaic_configs, os.path.join("DiBlasi2005_outputs", mosaic_configs.get_str()))
+    make_mosaic(mosaic_configs, os.path.join("outputs", "DiBlasi2005", mosaic_configs.get_str()))

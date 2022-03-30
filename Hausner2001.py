@@ -25,7 +25,7 @@ def create_direction_field(edge_map):
     Normalize gradient vector to have unit norm.
     """
     dist_transform = ndimage.distance_transform_edt(edge_map == 0)
-    dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 2)
+    dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 0)
     direction_field = np.stack(np.gradient(dist_transform), axis=2)
     direction_field = cv2.GaussianBlur(direction_field, (5, 5), 0)
     direction_field = normalize_vector_field(direction_field)
@@ -103,12 +103,12 @@ class HausnerMosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/Elon.jpg'
-    alpha_mask_path: str = 'images/Elon_mask.png'
-    resize: int = 256
-    n_tiles: int = 512
+    img_path: str = 'images/images/YingYang.png'
+    alpha_mask_path: str = 'images/masks/YingYang_mask.png'
+    resize: int = 512
+    n_tiles: int = 1500
     n_iters: int = 10
-    delta: float = 1.2  # Direction field variation level
+    delta: float = 0.99  # Direction field variation level
     edge_avoidance_dilation: int = 2
     initial_location: str = 'random' # random / uniform
     debug_freq: int = 50
@@ -119,7 +119,7 @@ class MosaicConfig:
 
 
 if __name__ == '__main__':
-    device: torch.device = torch.device("cuda:0")
+    device: torch.device = torch.device("cpu")
     configs = MosaicConfig()
     mosaic_maker = HausnerMosaicMaker(configs)
     mosaic_maker.make(os.path.join("outputs", "Hausner2001", configs.get_str()))

@@ -207,17 +207,23 @@ def sample_centers(image_shape, N, init_mode, density_map=None):
     """Sample initial tile centers and orientations  cell centers and directions"""
     h, w = image_shape
     if init_mode == 'random' and density_map is not None:  # sample randomly in each are in proportion to tile sizes in it
-        dense_area_proportion = (density_map == 2).sum() / density_map.size
+        all_points = []
+        num_default_area_points = N
+        for i in np.unique(density_map):
+            if i != 1:
+                dense_area_proportion = (density_map == i).sum() / density_map.size
 
-        # if X is the num_dense_area_points then the sparse area has X/4 and solving leads to
-        num_dense_area_points = int(4 * dense_area_proportion * N / (1 + 4 * dense_area_proportion))
-        num_default_area_points = N - num_dense_area_points
+                # if X is the num_dense_area_points then the sparse area has X/4 and solving leads to
+                num_dense_area_points = int(4 * dense_area_proportion * N / (1 + 4 * dense_area_proportion))
+                num_default_area_points -= num_dense_area_points
 
-        posible_points = np.stack(np.where(density_map == 2), axis=1)
-        dense_positions = posible_points[np.random.randint(len(posible_points), size=num_dense_area_points)]
+                posible_points = np.stack(np.where(density_map == i), axis=1)
+                dense_positions = posible_points[np.random.randint(len(posible_points), size=num_dense_area_points)]
+                all_points += [dense_positions]
+
         posible_points = np.stack(np.where(density_map == 1), axis=1)
         default_positions = posible_points[np.random.randint(len(posible_points), size=num_default_area_points)]
-        centers = np.concatenate([default_positions, dense_positions], axis=0).astype(int)
+        centers = np.concatenate([default_positions] + all_points, axis=0).astype(int)
 
     else:  # uniform
         # s = int(np.ceil(np.sqrt(N)))
