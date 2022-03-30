@@ -66,6 +66,7 @@ class GPNN_mosaic:
     def __init__(self,
                     NN_module,
                     patch_size: int = 7,
+                    reduced_patch_size=None,
                     stride: int = 1,
                     num_steps: int = 10,
                     pyr_factor: float = 0.7,
@@ -73,6 +74,7 @@ class GPNN_mosaic:
                     output_tile_size_to_dim = 0.01):
         self.NN_module = NN_module
         self.patch_size = patch_size
+        self.reduced_patch_size = reduced_patch_size if reduced_patch_size is not None else self.patch_size
         self.stride = stride
         self.num_steps = num_steps
         self.pyr_factor = pyr_factor
@@ -137,7 +139,7 @@ class GPNN_mosaic:
             value_patches.append(patches)
             keys_image = blur(img, self.pyr_factor)
             keys_image = self.apply_pre_compare_transform(keys_image)
-            patches = extract_patches(keys_image, self.patch_size, self.stride)
+            patches = extract_patches(keys_image, self.patch_size, self.stride, self.reduced_patch_size)
             key_patches.append(patches)
 
         value_patches = torch.cat(value_patches, dim=0)
@@ -172,7 +174,7 @@ class GPNN_mosaic:
 
         for i in range(self.num_steps):
             queries_image = self.apply_pre_compare_transform(queries_image)
-            queries = extract_patches(queries_image, self.patch_size, self.stride)
+            queries = extract_patches(queries_image, self.patch_size, self.stride, self.reduced_patch_size)
 
             NNs = self.NN_module.search(queries)
 

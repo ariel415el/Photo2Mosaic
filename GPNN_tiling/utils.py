@@ -45,13 +45,19 @@ def get_pyramid(np_img, n_levels, pyr_factor):
     return pyramid
 
 
-def extract_patches(src_img, patch_size, stride):
+def extract_patches(src_img, patch_size, stride, reduced_patch_size=None):
     """
     Splits the image to overlapping patches and returns a pytorch tensor of size (N_patches, 3*patch_size**2)
     """
     channels = src_img.shape[1]
     patches = F.unfold(src_img, kernel_size=patch_size, dilation=(1, 1), stride=stride, padding=(0, 0)) # shape (b, c*p*p, N_patches)
-    patches = patches.squeeze(dim=0).permute((1, 0)).reshape(-1, channels * patch_size**2)
+    if reduced_patch_size:
+        patches = patches.squeeze(dim=0).permute((1, 0)).reshape(-1, channels,  patch_size, patch_size)
+        patches = transforms.Resize((reduced_patch_size, reduced_patch_size), antialias=True)(patches)
+        patches = patches.reshape(-1, channels * reduced_patch_size ** 2)
+    else:
+        patches = patches.squeeze(dim=0).permute((1, 0)).reshape(-1, channels * patch_size ** 2)
+
     return patches
 
 

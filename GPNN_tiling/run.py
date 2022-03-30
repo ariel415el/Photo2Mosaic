@@ -24,10 +24,10 @@ if __name__ == '__main__':
         mosaic_reference = MosaicReference(images=[
                                             read_image(mosaic_path),
                                             read_image(mosaic_path, rotate=1),
-                                            # read_image(mosaic_path, rotate=2),
-                                            # read_image(mosaic_path, rotate=3),
+                                            read_image(mosaic_path, rotate=2),
+                                            read_image(mosaic_path, rotate=3),
                                             ],
-                                           tile_size=80
+                                           tile_size=35
         )
 
         # NN_module = PytorchNNLowMemory(alpha=0.005, batch_size=256, use_gpu=True, metric='l2')
@@ -37,11 +37,12 @@ if __name__ == '__main__':
 
         GPNN_module = GPNN_mosaic(NN_module,
                                     patch_size=9,
+                                    reduced_patch_size=3,
                                     stride=1,
                                     num_steps=5,
                                     pyr_factor=0.75,
-                                    coarse_tile_to_patch=0.9,
-                                    output_tile_size_to_dim=0.02)
+                                    coarse_tile_to_patch=0.65,
+                                    output_tile_size_to_dim=0.01)
 
         GPNN_module.run(content_image, mosaic_reference, debug_dir=f"outputs/{os.path.basename(content_img_path)}_{NN_module}")
 
