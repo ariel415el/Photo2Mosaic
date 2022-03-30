@@ -13,7 +13,7 @@ ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, -45]}
 
 class VornoiTessealtion:
     """
-    iteratively map each point
+    iteratively map each point to its nearest center and move centers to their mass center
     """
     def __init__(self, n_tiles, density_map, init_mode, torch_device=torch.device("cpu")):
         self.density_map = density_map
@@ -235,6 +235,7 @@ def sample_centers(image_shape, N, init_mode, density_map=None):
         centers = np.stack([y.flatten(), x.flatten()], axis=1)
 
     return centers
+
 
 def sample_random_normals(N):
     oritentations = np.random.rand(N, 2)
