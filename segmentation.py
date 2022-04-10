@@ -29,7 +29,7 @@ class segmentor:
         with torch.no_grad():
             image = read_image(image_path).unsqueeze(0).float()
             image = F.normalize(image, mean=image.mean(axis=(0, 2, 3)), std=image.std(axis=(0, 2, 3)))
-            image = F.resize(image, resize)
+            # image = F.resize(image, resize)
             output = self.model(image)['out']
 
             output = torch.nn.functional.softmax(output, dim=1)
@@ -48,4 +48,4 @@ class segmentor:
 
 if __name__ == '__main__':
     model = segmentor()
-    model("images/Portrait.png", resize=512, T=0.35)
+    model("images/images/Leonardo.jpg", resize=1024, T=0.35)

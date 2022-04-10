@@ -263,21 +263,21 @@ def make_mosaic(config, outputs_dir):
 class MosaicConfig:
     # io
     img_path: str = 'images/images/Alexander.jpg'
-    density_map_path: str = None
-    resize: int = 512
+    density_map_path: str = 'images/masks/Alexander_mask.png'
+    resize: int = 2048
 
     # Common
-    default_tile_size = 7
+    default_tile_size = 15
 
     # Design
     edges_reference: str = 'image'   # path/image/mask compute edges from image itself or from the mask
     aligned_background = False  # Reauires mask. mask == 2 is the foreground
-    extra_level_gap = 0  # the gap between level lines will be tile_size + levels_gap
+    extra_level_gap = 2  # the gap between level lines will be tile_size + levels_gap
     
     # Tiling
     delete_area_factor:float = 2.  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
     cement_color: int = 127
-    aspect_ratio: float = 2
+    aspect_ratio: float = 1
 
     # debug
     debug_freq = 100

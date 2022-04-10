@@ -5,6 +5,7 @@ import torch
 
 from utils import *
 from utils.tesselation import SLIC
+from utils.tesselation.SLIC import SLIC_superPixels
 
 
 class SLICMosaicMaker:
@@ -21,8 +22,7 @@ class SLICMosaicMaker:
         debug_dir = os.path.join(outputs_dir, "debug")
         os.makedirs(debug_dir, exist_ok=True)
 
-        tesselator = SLIC(self.config.n_tiles, self.config.m, self.config.init_mode)
-        centers, label_map = tesselator.tesselate(self.image, density_map=self.density_map, n_iters=self.config.n_iters, debug_dir=debug_dir)
+        centers, label_map = SLIC_superPixels(self.image, configs.m, self.density_map, configs.n_tiles, configs.n_iters, debug_dir=debug_dir)
 
         # write final mosaic
         self._render_tiles(centers, label_map, path=os.path.join(outputs_dir, f'FinalMosaic.png'))
@@ -61,15 +61,14 @@ class SLICMosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/images/Alexander_body.jpg'
+    img_path: str = 'images/images/Alexander.jpg'
     size_map_path: str = None
     resize: int = 512
-    n_tiles: int = 500
+    n_tiles: int = 2000
     n_iters: int = 10
-    init_mode: str = "uniform"              # random / uniform
-    m: int = 1                              # smaller m means stricter color adherence
+    m: int = 10                              # smaller m means stricter color adherence
     contour_approx_method: str = "fourier"  # 'fourier'/'poly'
-    contour_approx_param: float = 0.001     # coefficient cutoff percent / allowed error percent
+    contour_approx_param: float = 0.0025     # coefficient cutoff percent / allowed error percent
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])

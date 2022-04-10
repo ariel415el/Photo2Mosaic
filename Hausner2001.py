@@ -6,7 +6,7 @@ from scipy.ndimage import binary_dilation
 
 from utils import *
 from utils import get_edges_map_canny
-from utils.tesselation import VornoiTessealtion
+from utils.tesselation.oriented_tesselation import oriented_tesselation_with_edge_avoidance
 
 ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, 135, 225, 315]}
 
@@ -28,8 +28,8 @@ class HausnerMosaicMaker:
 
         direction_field, _ = create_direction_field(edge_map)
 
-        vornoi_maker = VornoiTessealtion(config.n_tiles, density_map, config.init_mode, torch_device=device)
-        centers, oritentations, _ = vornoi_maker.tesselate(direction_field, avoidance_map, config.n_iters, debug_dir=debug_dir)
+        centers, _ = oriented_tesselation_with_edge_avoidance(avoidance_map, direction_field, density_map, config.n_tiles, config.n_iters, debug_dir=debug_dir)
+        oritentations = direction_field[centers[:, 0], centers[:, 1]]
 
         # Debug code:
         plot_vector_field(direction_field, img, path=os.path.join(debug_dir, 'VectorField.png'))
@@ -111,7 +111,6 @@ class MosaicConfig:
 
 
 if __name__ == '__main__':
-    device: torch.device = torch.device("cpu")
     configs = MosaicConfig()
     mosaic_maker = HausnerMosaicMaker.make_mosaic(configs, os.path.join("outputs", "Hausner2001", configs.get_str()))
 
