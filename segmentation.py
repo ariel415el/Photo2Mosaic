@@ -18,7 +18,7 @@ CLASS_TO_INDEX = {cls: idx for (idx, cls) in enumerate(CLASSES)}
 
 
 class segmentor:
-    def __init__(self, T=0.5, resize=1024):
+    def __init__(self, T=0.5, resize=None):
         self.model = fcn_resnet50(pretrained=True, progress=False)
         # model = deeplabv3_resnet101(pretrained=True)
         self.model.eval()
@@ -29,23 +29,24 @@ class segmentor:
         with torch.no_grad():
             image = read_image(image_path).unsqueeze(0).float()
             image = F.normalize(image, mean=image.mean(axis=(0, 2, 3)), std=image.std(axis=(0, 2, 3)))
-            # image = F.resize(image, resize)
+            if self.resize:
+                image = F.resize(image, resize)
             output = self.model(image)['out']
 
             output = torch.nn.functional.softmax(output, dim=1)
-            person_mask = output[0, CLASS_TO_INDEX[class_name]]
-            person_mask[person_mask > T] = 1
-            person_mask[person_mask <= T] = 0
+            class_mask = output[0, CLASS_TO_INDEX[class_name]]
+            class_mask[class_mask > T] = 1
+            class_mask[class_mask <= T] = 0
 
             from scipy.ndimage import binary_closing, binary_dilation
-            closed_person_mask = binary_closing(person_mask, iterations=15).astype(np.uint8)
+            closed_class_mask = binary_closing(class_mask, iterations=15).astype(np.uint8)
 
-            closed_person_mask[closed_person_mask==1] = 255
+            closed_class_mask[closed_class_mask==1] = 255
 
             path, ext = os.path.splitext(image_path)
-            Image.fromarray(closed_person_mask).save(f"{path}_mask.png")
+            Image.fromarray(closed_class_mask).save(f"{path}_mask.png")
 
 
 if __name__ == '__main__':
     model = segmentor()
-    model("images/images/Leonardo.jpg", resize=1024, T=0.35)
+    model("images/images/Yossi2.jpg", T=0.35, class_name='person')

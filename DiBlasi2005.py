@@ -16,7 +16,7 @@ import utils
 import utils.edge_detection
 
 FREE_SPACE_LABEL = 2
-ROTATION_MATRICES={x: utils.get_rotation_matrix(x) for x in [45, 90]}
+ROTATION_MATRICES={x: utils.get_rotation_matrix(x) for x in [-45, 45, 90]}
 
 
 class MosaicDesigner:
@@ -36,13 +36,11 @@ class MosaicDesigner:
         if self.edges_reference == 'mask' and density_map is not None:
             edge_map = utils.edge_detection.get_edges_map_canny(cv2.cvtColor(density_map * 127, cv2.COLOR_GRAY2BGR))
         elif os.path.exists(self.edges_reference):
-            edge_map = cv2.imread(self.edges_reference, cv2.IMREAD_GRAYSCALE)
-            edge_map = utils.set_image_height_without_distortion(edge_map, image.shape[0], mode=cv2.INTER_NEAREST)
-            edge_map[edge_map < 127] = 0
-            edge_map[edge_map >= 127] = 1
-            edge_map = skeletonize(edge_map).astype(np.uint8)
+            edge_map = utils.read_edges_map(self.edges_reference, t=127, resize=image.shape[0])
         else:
             edge_map = utils.edge_detection.get_edges_map_canny(image, blur_size=7, sigma=5, t1=100, t2=150)
+
+        cv2.imwrite(os.path.join(self.debug_dir, 'EdgeMap.png'), edge_map * 255)
 
         return edge_map
 
@@ -73,10 +71,10 @@ class MosaicDesigner:
 
         # Use default background
         if self.aligned_background:
-            if np.all(density_map):
+            if np.all(density_map == 1):
                 raise UserWarning("aligned_background should be used only with a non-empty mask")
             # Create separate directions and levels for background
-            dilated_foreground = binary_dilation(density_map != 1, iterations=self.default_tile_size * 4)
+            dilated_foreground = binary_dilation(density_map != 1, iterations=self.default_tile_size * 1)
             bg_level_matrix = np.zeros_like(level_matrix)
 
             # Set BG level lines to horizontal lines
@@ -89,18 +87,19 @@ class MosaicDesigner:
             bg_direction_field[..., 0] = 0
             direction_field = np.where(dilated_foreground[..., None], direction_field, bg_direction_field)
 
+        # Dumb debug images
+        utils.plot_vector_field(direction_field, edge_map * 255, path=os.path.join(self.debug_dir, 'VectorField.png'))
+        cv2.imwrite(os.path.join(self.debug_dir, 'density_map.png'), density_map * 127)
+        cv2.imwrite(os.path.join(self.debug_dir, 'Level_matrix.png'), level_matrix * 127)
+        cv2.imwrite(os.path.join(self.debug_dir, 'dist_transform.png'), dist_transform / dist_transform.max() * 256)
+
         return direction_field, level_matrix
 
     def get_design(self, image, density_map, debug_dir):
+        self.debug_dir = debug_dir
         edge_map = self.get_edges_map(image, density_map)
         
         direction_field, level_matrix = self.create_gradient_and_level_matrix(edge_map, density_map)
-
-        # Dumb debug images
-        utils.plot_vector_field(direction_field, edge_map * 255, path=os.path.join(debug_dir, 'VectorField.png'))
-        cv2.imwrite(os.path.join(debug_dir, 'density_map.png'), density_map * 127)
-        cv2.imwrite(os.path.join(debug_dir, 'EdgeMap.png'), edge_map * 255)
-        cv2.imwrite(os.path.join(debug_dir, 'Level_matrix.png'), level_matrix * 127)
 
         return direction_field, level_matrix
 
@@ -113,7 +112,7 @@ class MosaicTiler:
         self.aspect_ratio = aspect_ratio
         self.debug_freq = debug_freq
 
-    def find_approximate_location(self, center, normal, diameter, candidate_location_map):
+    def find_approximate_location(self, center, direction, diameter, candidate_location_map):
         """
         Look in the orientedd surrounding of 'center' for free space in 'candidate_location_map'
         """
@@ -122,9 +121,10 @@ class MosaicTiler:
         arange = np.arange(-diameter, diameter)
         rs, cs = np.meshgrid(arange, arange)
         all_offsets = np.column_stack((rs.ravel(), cs.ravel()))
-        basis2 = normal @ ROTATION_MATRICES[90] * self.aspect_ratio
+        basis1 = direction @ ROTATION_MATRICES[45]
+        basis2 = direction @ ROTATION_MATRICES[-45] * self.aspect_ratio
 
-        offset_dist_func = lambda x: np.abs((x * normal).sum(-1)) + np.abs((x * basis2).sum(-1))
+        offset_dist_func = lambda x: np.abs((x * basis1).sum(-1)) + np.abs((x * basis2).sum(-1))
         all_offsets = sorted(list(all_offsets), key=offset_dist_func)
 
         for offset in all_offsets:
@@ -136,10 +136,10 @@ class MosaicTiler:
         return None
 
     @staticmethod
-    def get_tile_rectangle_contour(center, tile_size, normal, aspect_ratio):
+    def get_tile_rectangle_contour(center, tile_size, direction, aspect_ratio):
         """Get a cv2 drawable contour of a rectangle centered in 'center' with 2 faces in normal1, normal2"""
-        vec1 = normal
-        vec2 = normal @ ROTATION_MATRICES[90] * aspect_ratio
+        vec1 = direction
+        vec2 = direction @ ROTATION_MATRICES[90] * aspect_ratio
         corner_directions = np.array([vec1 + vec2,
                                       vec1 - vec2,
                                       -vec1 - vec2,
@@ -147,7 +147,7 @@ class MosaicTiler:
 
         contours = center + corner_directions * (tile_size / 2)
         contours = contours[:, ::-1]
-        box = np.int0(cv2.boxPoints(cv2.minAreaRect(np.array(contours).astype(int))))
+        box = np.int0(np.round(cv2.boxPoints(cv2.minAreaRect(np.array(contours).astype(int)))))
 
         return box
 
@@ -166,8 +166,8 @@ class MosaicTiler:
     def get_next_tile_position(self, position, direction_field, density_map, candidate_location_map):
         if position is not None:  # Find approximate location
             search_diameter = self.delete_area_factor * (self.default_tile_size // density_map[position[0], position[1]]) * 2
-            normal = direction_field[position[0], position[1]]
-            position = self.find_approximate_location(position, normal, search_diameter, candidate_location_map)
+            direction = direction_field[position[0], position[1]]
+            position = self.find_approximate_location(position, direction, search_diameter, candidate_location_map)
 
         if position is None:  # Find loose track ends
             num_neighbors = convolve2d(candidate_location_map == FREE_SPACE_LABEL, np.ones((3, 3)), mode='same', fillvalue=-9)
@@ -197,23 +197,23 @@ class MosaicTiler:
 
         # Use quantized colors
         color_map = cv2.GaussianBlur(image, (7, 7), 0)
-        color_map = (color_map // 32) * 32
+        # color_map = (color_map // 32) * 32
 
         all_track_maps = MosaicTiler.get_track_maps_from_level_map(level_matrix)
 
         pbar = tqdm()
         n_placed_tiles = 0
-        for track_map in all_track_maps[3:]:
+        for track_map in all_track_maps:
             center = None
             while (track_map == FREE_SPACE_LABEL).any():
 
                 center = self.get_next_tile_position(center, direction_field, density_map, track_map)
 
                 # Get tile details
-                normal = direction_field[center[0], center[1]]
+                direction = direction_field[center[0], center[1]]
                 tile_color = color_map[center[0], center[1]].tolist()
                 local_tile_size = self.default_tile_size / density_map[center[0], center[1]]
-                contour = MosaicTiler.get_tile_rectangle_contour(center, local_tile_size, normal, self.aspect_ratio)
+                contour = MosaicTiler.get_tile_rectangle_contour(center, local_tile_size, direction, self.aspect_ratio)
 
                 # Draw oriented tile
                 cv2.drawContours(mosaic, [contour], -1, color=tile_color, thickness=cv2.FILLED)
@@ -226,7 +226,7 @@ class MosaicTiler:
 
                 # Remove surrounding from candidate points
                 delete_area = local_tile_size * self.delete_area_factor
-                contour = MosaicTiler.get_tile_rectangle_contour(center, delete_area, normal, self.aspect_ratio)
+                contour = MosaicTiler.get_tile_rectangle_contour(center, delete_area, direction, self.aspect_ratio)
                 cv2.drawContours(track_map, [contour], -1, color=0, thickness=cv2.FILLED)
 
                 n_placed_tiles += 1
@@ -236,9 +236,15 @@ class MosaicTiler:
                     tmp = mosaic + ((track_map == 2).astype(np.uint8) * 255 * 0.4)[:, :, None]
                     # Debug Draw tile normal
                     center_xy = center[::-1].astype(int)
-                    direction_xy = (normal[::-1] * self.default_tile_size / 2).astype(int)
+                    direction_xy = (direction[::-1] * self.default_tile_size / 2).astype(int)
                     cv2.arrowedLine(tmp, tuple(center_xy), tuple(center_xy + direction_xy), (0, 0, 255), 1)
                     cv2.imwrite(os.path.join(debug_dir, f"Moisaic-step-{n_placed_tiles}.png"), tmp)
+
+
+        all_track_maps = MosaicTiler.get_track_maps_from_level_map(level_matrix)
+        leftovers = np.sum(all_track_maps, axis=0) > 0
+        leftovers *= (coverage_map > 0)
+        cv2.imwrite(os.path.join(debug_dir, f"LeftOvers.png"), leftovers*255)
 
         coverage_percentage = (coverage_map > 0).sum() / coverage_map.size * 100
         overlap_percentage = (coverage_map > 1).sum() / coverage_map.size * 100
@@ -262,25 +268,25 @@ def make_mosaic(config, outputs_dir):
 @dataclass
 class MosaicConfig:
     # io
-    img_path: str = 'images/images/Alexander.jpg'
-    density_map_path: str = 'images/masks/Alexander_mask.png'
-    resize: int = 2048
+    img_path: str = 'images/images/turk.jpg'
+    density_map_path: str = 'images/masks/turk_mask.png'
+    resize: int = 1600
 
     # Common
     default_tile_size = 15
 
     # Design
-    edges_reference: str = 'image'   # path/image/mask compute edges from image itself or from the mask
+    edges_reference: str = 'images/edge_maps/turk_edges_2.png'   # path/image/mask compute edges from image itself or from the mask
     aligned_background = False  # Reauires mask. mask == 2 is the foreground
-    extra_level_gap = 2  # the gap between level lines will be tile_size + levels_gap
+    extra_level_gap = 1  # the gap between level lines will be tile_size + levels_gap
     
     # Tiling
-    delete_area_factor:float = 2.  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
+    delete_area_factor:float = 2  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
     cement_color: int = 127
     aspect_ratio: float = 1
 
     # debug
-    debug_freq = 100
+    debug_freq = 1
 
     def get_image_configs(self):
         return self.img_path, self.density_map_path, self.resize
