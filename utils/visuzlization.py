@@ -1,3 +1,5 @@
+import lic
+
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
@@ -7,8 +9,8 @@ from skimage import color
 def plot_vector_field(vector_field, image=None, path="vector_field.png"):
     dx, dy = vector_field[..., 1], vector_field[..., 0].copy()
     h, w = dx.shape
-    x = np.arange(0, w, max(1, w // 25))
-    y = np.arange(0, h, max(1, h // 25))
+    x = np.arange(0, w, max(1, w // 30))
+    y = np.arange(0, h, max(1, h // 30))
     xx, yy = np.meshgrid(x, y)
 
     if image is not None:
@@ -41,9 +43,16 @@ def overlay_rgb_edges(image, label_map, path):
 
     return new_image
 
-
+COLORS = None
 def plot_label_map(label_map, points, oritentations=None, avoidance_map=None, path='vornoi_cells.png'):
-    image = color.label2rgb(label_map)
+    global COLORS
+    if COLORS is None:
+        n = int(np.sqrt(len(points)))
+        COLORS = [tuple(np.random.choice(np.linspace(0,1,255), size=3)) for _ in range(n)]
+
+    # colors = [ hls_to_rgb((2/3) * i/(n-1), 0.5, 1) for i in range(n) ]
+    # shuffle(colors)
+    image = color.label2rgb(label_map, colors=COLORS)
     # image = overlay_rgb_edges(image)
 
     w, h = image.shape[:2]
@@ -60,4 +69,16 @@ def plot_label_map(label_map, points, oritentations=None, avoidance_map=None, pa
 
     plt.tight_layout()
     plt.savefig(path)
+    plt.clf()
+
+
+def line_interval_convolution(direction_field, path=None):
+    """visualizes a vector field"""
+    lic_result = lic.lic(direction_field[...,0], direction_field[...,1], length=32)
+    plt.imshow(lic_result, origin='lower', cmap='gray')
+    plt.gca().invert_yaxis()
+    if path is not None:
+        plt.savefig(path)
+    else:
+        plt.show()
     plt.clf()

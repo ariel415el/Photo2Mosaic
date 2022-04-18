@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
+from skimage.morphology import skeletonize
 
-from utils.image import image_histogram_equalization
+from utils.image import image_histogram_equalization, set_image_height_without_distortion
 
 
 def get_edges_map_DiBlasi2005(image):
@@ -43,3 +44,11 @@ def get_edges_map_canny(image, blur_size=7, sigma=None, t1=50, t2=100):
 
     return mask
 
+def read_edges_map(edges_map_path, t=127, resize=None):
+    edge_map = cv2.imread(edges_map_path, cv2.IMREAD_GRAYSCALE)
+    if resize:
+        edge_map = set_image_height_without_distortion(edge_map, resize, mode=cv2.INTER_NEAREST)
+    edge_map[edge_map < t] = 0
+    edge_map[edge_map >= t] = 1
+    edge_map = skeletonize(edge_map).astype(np.uint8)
+    return edge_map

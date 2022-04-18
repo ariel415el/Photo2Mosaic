@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from scipy import ndimage
+from tqdm import tqdm
 
 
 def set_image_height_without_distortion(img, resize, mode=None):
@@ -32,7 +33,9 @@ def create_direction_field(edge_map):
     dist_transform = ndimage.distance_transform_edt(edge_map == 0)
     dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 0)
     direction_field = np.stack(np.gradient(dist_transform), axis=2)
-    direction_field = cv2.GaussianBlur(direction_field, (5, 5), 0)
+
+    direction_field = iterative_edge_tangent_flow(direction_field, edge_map)
+
     direction_field = normalize_vector_field(direction_field)
 
     return direction_field, dist_transform
@@ -70,3 +73,36 @@ def simplify_contour(cnt, cutoff=0.01):
     new_cnt = np.stack([new_cnt_complex.real, new_cnt_complex.imag], axis=-1).astype(int)[:, None]
 
     return new_cnt
+
+
+def iterative_edge_tangent_flow(direction_field, magnitude_map, mu=5, iterations=3):
+    """
+    According to the paper "Imaging Vector Fields Using Line Integral Convolution"
+    Smooth a vector field with a weighted bilateral filter
+    """
+
+    h,w = direction_field.shape[:2]
+
+    pbar = tqdm(total=h*w*iterations)
+    for iteration in range(iterations):
+        new_direction_field = np.zeros((h, w, 2))
+        for r in range(h):
+            for c in range(w):
+
+                h_slice = slice(max(0, r - mu), r + mu)
+                w_slice = slice(max(0, c - mu), c + mu)
+                mag_weights = (magnitude_map[r,c] - magnitude_map[h_slice, w_slice] + 1) / 2
+                direction_weights = direction_field[h_slice, w_slice] @ direction_field[r,c]
+                weights = mag_weights * direction_weights
+                weights[direction_weights < 0] *= -1
+
+                new_direction_field[r][c] = np.sum(direction_field[h_slice, w_slice] * weights[..., None], axis=(0,1))
+                weight_sum = np.sum(weights[..., None], axis=(0,1))
+                if weight_sum > 0 :
+                    new_direction_field[r][c] /= weight_sum
+
+                pbar.update(1)
+
+        direction_field = new_direction_field
+
+    return direction_field

@@ -28,6 +28,14 @@ def simplify_blobs(label_map, centers):
 
     return new_label_map
 
+# def get_argmin(dists_map):
+#     h, w = dists_map.shape[:2]
+#     argmin_map = np.ones((h, w), dtype=np.uint16)
+#     for r in range(h)
+#         for c range(w):
+
+
+
 def SLIC_superPixels(input_img, m, density_map, n_tiles, n_iters=10, search_area_factor=1, debug_dir=None):
     """
     Creates SLIC superpixels using spacial and color distances
@@ -49,10 +57,9 @@ def SLIC_superPixels(input_img, m, density_map, n_tiles, n_iters=10, search_area
     lab_field = cv2.cvtColor(input_img, cv2.COLOR_BGR2Lab)
     yx_field = np.indices((h,w)).transpose(1,2,0)
 
-
     S = int(np.ceil(np.sqrt(h * w / n_tiles))) * search_area_factor
     for iter in tqdm(range(n_iters)):
-        min_dist_map = np.inf * np.ones((len(centers), h, w))
+        min_dist_map = np.inf * np.ones((len(centers), h, w), np.float32)
         for c_idx in range(len(centers)):
             cy, cx = centers[c_idx]
             search_slice = tuple([slice(max(0, cy - S), cy + S), slice(max(0, cx - S), cx + S)])

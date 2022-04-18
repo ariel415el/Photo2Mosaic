@@ -60,5 +60,5 @@ def smooth_centers_by_gradients(centers, gray_image):
 def get_biggest_blob_mask(edge_map):
     """If edge map (ususly a slice of it is the input) is split by edges then find the biggest connected component mask"""
     all_blobs, ncomponents = scipy_label(1 - edge_map)
-    mask = all_blobs == np.argmax([(all_blobs == i).sum() for i in range(ncomponents)])
-    return mask
+
+    return all_blobs == np.argmax([(all_blobs == i).sum() for i in np.unique(all_blobs)])
