@@ -12,6 +12,7 @@ def rescale_img(img, pyr_factor):
     new_h = int(pyr_factor * img.shape[-2])
     return transforms.Resize((new_h, new_w), antialias=True)(img)
 
+
 def blur(img, pyr_factor):
     """Blur image by downscaling and then upscaling it back to original size"""
     if pyr_factor < 1:

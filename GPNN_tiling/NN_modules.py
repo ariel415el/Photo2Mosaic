@@ -2,7 +2,7 @@ import faiss
 import numpy as np
 import torch
 
-from NN import get_NN_indices_low_memory, get_NN_indices
+from GPNN_tiling.NN import get_NN_indices_low_memory, get_NN_indices
 
 
 class FaissNNModule:

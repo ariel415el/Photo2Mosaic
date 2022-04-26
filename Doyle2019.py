@@ -61,14 +61,14 @@ class SLICMosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/images/Alexander.jpg'
-    size_map_path: str = None
+    img_path: str = 'images/images/turk.jpg'
+    size_map_path: str = 'images/masks/turk_mask.png'
     resize: int = 512
-    n_tiles: int = 2000
+    n_tiles: int = 1000
     n_iters: int = 10
     m: int = 10                              # smaller m means stricter color adherence
-    contour_approx_method: str = "fourier"  # 'fourier'/'poly'
-    contour_approx_param: float = 0.0025     # coefficient cutoff percent / allowed error percent
+    contour_approx_method: str = "poly"  # 'fourier'/'poly'
+    contour_approx_param: float = 0.005     # coefficient cutoff percent default=0.0001 / allowed error percent default=0.005
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])

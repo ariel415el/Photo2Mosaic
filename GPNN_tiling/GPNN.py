@@ -62,6 +62,7 @@ def get_tuple(arr, factor, i):
     np_arr = np.array(arr)
     return tuple((np_arr * (factor ** i)).astype(int))
 
+
 class GPNN_mosaic:
     def __init__(self,
                     NN_module,
@@ -99,7 +100,6 @@ class GPNN_mosaic:
                 synthesized_image = rescale_img(synthesized_image, 1 / self.pyr_factor)
 
             value_patches, key_patches = self.collect_patches_from_images(mosaic_reference.get_level_images(lvl))
-
             lvl_output = self.replace_patches(value_patches, key_patches, queries_image=synthesized_image)
 
             if debug_dir:
@@ -174,8 +174,8 @@ class GPNN_mosaic:
 
         for i in range(self.num_steps):
             queries_image = self.apply_pre_compare_transform(queries_image)
-            queries = extract_patches(queries_image, self.patch_size, self.stride, self.reduced_patch_size)
 
+            queries = extract_patches(queries_image, self.patch_size, self.stride, self.reduced_patch_size)
             NNs = self.NN_module.search(queries)
 
             queries_image = combine_patches(values[NNs], self.patch_size, self.stride, queries_image_original_shape)
