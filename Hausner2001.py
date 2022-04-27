@@ -14,15 +14,16 @@ ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, 135, 225, 315]}
 def get_avoidance_map(edges_map, dilation_iterations=0):
     if dilation_iterations > 0:
         edges_map = binary_dilation(edges_map, iterations=1).astype(np.uint8)
-    # mask = binary_erosion(mask, iterations=1).astype(np.uint8)
 
     return edges_map
-
 
 class HausnerMosaicMaker:
     @staticmethod
     def _design_mosaic(img, density_map, config, debug_dir):
-        edge_map = get_edges_map_canny(img)
+        if os.path.exists(config.edges_reference):
+            edge_map = read_edges_map(config.edges_reference, t=127, resize=img.shape[0])
+        else:
+            edge_map = get_edges_map_canny(img)
 
         avoidance_map = get_avoidance_map(edge_map, config.edge_avoidance_dilation)
 
@@ -95,15 +96,15 @@ class HausnerMosaicMaker:
 
 @dataclass
 class MosaicConfig:
-    img_path: str = 'images/images/YingYang.png'
-    alpha_mask_path: str = 'images/masks/YingYang_mask.png'
+    img_path: str = 'images/images/turk.jpg'
+    alpha_mask_path: str = 'images/masks/turk_mask.png'
+    edges_reference: str = 'images/edge_maps/turk_edges.png'   # if path: compute edges from image itself or from the mask. else: Canny edge detection
     resize: int = 512
     n_tiles: int = 1500
-    n_iters: int = 10
-    delta: float = 0.99  # Direction field variation level
+    n_iters: int = 50
+    delta: float = 0.8  # Direction field variation level
     edge_avoidance_dilation: int = 2
     init_mode: str = 'random' # random / uniform
-    debug_freq: int = 50
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])

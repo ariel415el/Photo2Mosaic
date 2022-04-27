@@ -24,7 +24,7 @@ def get_rotation_matrix(theta):
     return np.array(((c, -s), (s, c)))
 
 
-def create_direction_field(edge_map):
+def create_direction_field(edge_map, smooth_directions_with_bilateral_filter=False):
     """
     Create a direction vector field from edges in the edges_map.
     Compute edges map its distance transform and then its gradient map.
@@ -34,7 +34,10 @@ def create_direction_field(edge_map):
     dist_transform = cv2.GaussianBlur(dist_transform, (5, 5), 0)
     direction_field = np.stack(np.gradient(dist_transform), axis=2)
 
-    direction_field = iterative_edge_tangent_flow(direction_field, edge_map)
+    if smooth_directions_with_bilateral_filter:
+        direction_field = iterative_edge_tangent_flow(direction_field, edge_map)
+    else:
+        direction_field = cv2.GaussianBlur(direction_field, (5, 5), 0)
 
     direction_field = normalize_vector_field(direction_field)
 

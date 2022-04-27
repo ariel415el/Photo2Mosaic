@@ -27,10 +27,6 @@ def sample_centers(image_shape, N, init_mode, density_map=None):
         centers = np.concatenate([default_positions] + all_points, axis=0).astype(int)
 
     else:  # uniform
-        # s = int(np.ceil(np.sqrt(N)))
-        # y, x = np.meshgrid(np.linspace(1, h - 1, s), np.linspace(1, w - 1, s))
-        # centers = np.stack([y.flatten(), x.flatten()], axis=1).astype(np.uint64)[:N]
-
         S = int(np.ceil(np.sqrt(h * w / N)))
         y, x = np.meshgrid(np.arange(S // 2 - 1, h - S // 2 + 1, S), np.arange(S // 2 - 1, w - S // 2 + 1, S))
         centers = np.stack([y.flatten(), x.flatten()], axis=1)
@@ -57,8 +53,30 @@ def smooth_centers_by_gradients(centers, gray_image):
         centers[i] = (r + argmin[0][0] - 1, c + argmin[1][0] -1)  # -1 for offset from center
     return centers
 
-def get_biggest_blob_mask(edge_map):
-    """If edge map (ususly a slice of it is the input) is split by edges then find the biggest connected component mask"""
-    all_blobs, ncomponents = scipy_label(1 - edge_map)
+def smooth_centers_by_edges(centers, edge_map):
+    """
+    Avoid centers from being placed on an edge
+    """
+    for i in range(len(centers)):
+        y, x = centers[i]
+        radius = 1
+        if edge_map[y,x] != 1:
+            continue
+        while radius < 3:
+            neighberhood = edge_map[y-radius :y + radius + 1, x - radius:x + radius + 1]
+            if 1 in neighberhood:
+                nwhere = np.where(neighberhood == 1)
+                centers[i] = nwhere[0][0], nwhere[0][1]
+                break
+            radius += 1
 
-    return all_blobs == np.argmax([(all_blobs == i).sum() for i in np.unique(all_blobs)])
+    return centers
+
+def get_contigous_blob_mask(edge_map, center=None):
+    """If edge map (ususly a slice of it is the input) is split by edges then find the biggest/center-containing connected component mask"""
+    all_blobs, ncomponents = scipy_label(1 - edge_map)
+    if center is None:
+        return all_blobs == np.argmax([(all_blobs == i).sum() for i in np.unique(all_blobs)])
+    else:
+        return all_blobs == all_blobs[center[0], center[1]]
+
