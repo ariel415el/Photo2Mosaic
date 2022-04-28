@@ -1,11 +1,11 @@
 import os.path
 from dataclasses import dataclass
 
-import torch
 from scipy.ndimage import binary_dilation
 
 from utils import *
-from utils import get_edges_map_canny
+from utils.edge_detection import get_edges_map
+from utils.common import create_direction_field
 from utils.tesselation.oriented_tesselation import oriented_tesselation_with_edge_avoidance
 
 ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, 135, 225, 315]}
@@ -20,10 +20,7 @@ def get_avoidance_map(edges_map, dilation_iterations=0):
 class HausnerMosaicMaker:
     @staticmethod
     def _design_mosaic(img, density_map, config, debug_dir):
-        if os.path.exists(config.edges_reference):
-            edge_map = read_edges_map(config.edges_reference, t=127, resize=img.shape[0])
-        else:
-            edge_map = get_edges_map_canny(img)
+        edge_map = get_edges_map(config.edges_reference, density_map)
 
         avoidance_map = get_avoidance_map(edge_map, config.edge_avoidance_dilation)
 
@@ -101,8 +98,8 @@ class MosaicConfig:
     edges_reference: str = 'images/edge_maps/turk_edges.png'   # if path: compute edges from image itself or from the mask. else: Canny edge detection
     resize: int = 512
     n_tiles: int = 1500
-    n_iters: int = 50
-    delta: float = 0.8  # Direction field variation level
+    n_iters: int = 10
+    delta: float = 0.99  # Direction field variation level
     edge_avoidance_dilation: int = 2
     init_mode: str = 'random' # random / uniform
 

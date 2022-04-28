@@ -44,11 +44,12 @@ def overlay_rgb_edges(image, label_map, path):
     return new_image
 
 COLORS = None
-def plot_label_map(label_map, points, oritentations=None, avoidance_map=None, path='vornoi_cells.png'):
+def plot_label_map(label_map, points=None, oritentations=None, avoidance_map=None, path='vornoi_cells.png'):
     global COLORS
-    if COLORS is None:
-        n = len(points)
-        COLORS = [tuple(np.random.choice(np.linspace(0,1,255), size=3)) for _ in range(n)]
+    if points is not None:
+        if COLORS is None:
+            n = len(points)
+            COLORS = [tuple(np.random.choice(np.linspace(0,1,255), size=3)) for _ in range(n)]
 
     image = color.label2rgb(label_map, colors=COLORS)
 
@@ -56,10 +57,11 @@ def plot_label_map(label_map, points, oritentations=None, avoidance_map=None, pa
     #     image = cv2.putText(image, str(i),points[i][::-1],cv2.FONT_HERSHEY_SIMPLEX,0.25,(0,0,255),1,2)
 
     w, h = image.shape[:2]
-
     plt.figure(figsize=(h / 50, w / 50))
     plt.imshow(image)
-    plt.scatter(points[:, 1], points[:, 0], s=4, c='r')
+
+    if points is not None:
+        plt.scatter(points[:, 1], points[:, 0], s=4, c='r')
 
     if avoidance_map is not None:
         plt.imshow(avoidance_map * 255, alpha=0.5)

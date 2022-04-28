@@ -13,6 +13,8 @@ from scipy.signal import convolve2d
 from scipy.ndimage.measurements import label
 
 import utils
+
+import utils.common
 import utils.edge_detection
 
 FREE_SPACE_LABEL = 2
@@ -27,47 +29,15 @@ class MosaicDesigner:
         self.aligned_background = aligned_background
         self.extra_level_gap = extra_level_gap
 
-    def get_edges_map(self, image, density_map):
-        """Get an edge map in 3 ways:
-         1: From the image itself using an edge detector
-         2: Use the contour of the mask (density_map) as edges
-         3: Use a predefined edge image. Possibly refine it to its skeleton
-         """
-        if self.edges_reference == 'mask' and density_map is not None:
-            edge_map = utils.edge_detection.get_edges_map_canny(cv2.cvtColor(density_map * 127, cv2.COLOR_GRAY2BGR))
-        elif os.path.exists(self.edges_reference):
-            edge_map = utils.read_edges_map(self.edges_reference, t=127, resize=image.shape[0])
-        else:
-            edge_map = utils.edge_detection.get_edges_map_canny(image, blur_size=7, sigma=5, t1=100, t2=150)
-
-        cv2.imwrite(os.path.join(self.debug_dir, 'EdgeMap.png'), edge_map * 255)
-
-        return edge_map
-
-    def get_level_matrix_from_dist_map(self, dist_map, density_map, offset=0.5):
-        """
-        Create binary mask where pixels in periodic distances from edges are turned on.
-        Level lines frequency is determined by the size map.
-        offset: float: 0.0 - 1.0 where to put the level maps
-        """
-        dist_map = dist_map.astype(int)
-        level_matrix = np.zeros_like(dist_map).astype(np.uint8)
-        default_levels_gap = self.default_tile_size + self.extra_level_gap
-        for factor in np.unique(density_map):
-            gap_size = default_levels_gap // factor
-            mask = np.remainder(dist_map, gap_size) == int(offset * gap_size)
-            mask = np.logical_and(mask, density_map == factor)
-            level_matrix[mask] = FREE_SPACE_LABEL
-        return level_matrix
-
     def create_gradient_and_level_matrix(self, edge_map, density_map):
         """
         Compute distance transform from edges, return normalized gradient of distances
         Compute a level map from integer modolu of distances
         """
-        direction_field, dist_transform = utils.create_direction_field(edge_map)
 
-        level_matrix = self.get_level_matrix_from_dist_map(dist_transform, density_map, offset=0.5)
+        default_levels_gap = self.default_tile_size + self.extra_level_gap
+        level_matrix, direction_field, dist_transform = utils.get_level_lines(edge_map, density_map, default_levels_gap, offset=0.5)
+        level_matrix[level_matrix == 1] = FREE_SPACE_LABEL
 
         # Use default background
         if self.aligned_background:
@@ -97,8 +67,10 @@ class MosaicDesigner:
 
     def get_design(self, image, density_map, debug_dir):
         self.debug_dir = debug_dir
-        edge_map = self.get_edges_map(image, density_map)
-        
+
+        edge_map = utils.edge_detection.get_edges_map(self.edges_reference, image, density_map)
+        cv2.imwrite(os.path.join(self.debug_dir, 'EdgeMap.png'), edge_map * 255)
+
         direction_field, level_matrix = self.create_gradient_and_level_matrix(edge_map, density_map)
 
         return direction_field, level_matrix
@@ -116,8 +88,6 @@ class MosaicTiler:
         """
         Look in the orientedd surrounding of 'center' for free space in 'candidate_location_map'
         """
-        # arange = np.arange(diameter // 2, diameter)
-        # arange = np.concatenate([-arange, arange])
         arange = np.arange(-diameter, diameter)
         rs, cs = np.meshgrid(arange, arange)
         all_offsets = np.column_stack((rs.ravel(), cs.ravel()))
@@ -270,7 +240,7 @@ class MosaicConfig:
     # io
     img_path: str = 'images/images/turk.jpg'
     density_map_path: str = 'images/masks/turk_mask.png'
-    resize: int = 1600
+    resize: int = 960
 
     # Common
     default_tile_size = 15

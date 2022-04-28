@@ -1,8 +1,29 @@
+import cv2
 import numpy as np
-from utils import get_rotation_matrix
+from scipy.ndimage import binary_erosion
+
+from utils import get_rotation_matrix, simplify_contour
 from scipy.ndimage.measurements import label as scipy_label
 
 ROTATION_MATRICES={x: get_rotation_matrix(x) for x in [45, 90, -45]}
+
+def sample_uniformly_from_area(mask, n, sparse=True):
+    posible_points = np.stack(np.where(mask), axis=1)
+    if sparse:
+        density = mask.astype(float) / mask.sum()
+        points = []
+        for i in range(n):
+            index = np.random.choice(len(posible_points), p=density[mask])
+            point = posible_points[index]
+            if len(points) > 0:
+                assert not np.any(np.all(np.array(points) == np.array(point), axis=1))
+            points.append(point)
+            density[point[0], point[1]] = 0
+            density /= density.sum()
+        return np.array(points)
+    else:
+        indices = np.random.choice(len(posible_points), n, replace=False)
+        return posible_points[indices]
 
 def sample_centers(image_shape, N, init_mode, density_map=None):
     """Sample initial tile centers and orientations  cell centers and directions"""
@@ -18,12 +39,9 @@ def sample_centers(image_shape, N, init_mode, density_map=None):
                 num_dense_area_points = int(4 * dense_area_proportion * N / (1 + 4 * dense_area_proportion))
                 num_default_area_points -= num_dense_area_points
 
-                posible_points = np.stack(np.where(density_map == i), axis=1)
-                dense_positions = posible_points[np.random.randint(len(posible_points), size=num_dense_area_points)]
-                all_points += [dense_positions]
+                all_points += [sample_uniformly_from_area(density_map == i, num_dense_area_points, sparse=True)]
 
-        posible_points = np.stack(np.where(density_map == 1), axis=1)
-        default_positions = posible_points[np.random.randint(len(posible_points), size=num_default_area_points)]
+        default_positions = sample_uniformly_from_area(density_map == 1, num_default_area_points, sparse=True)
         centers = np.concatenate([default_positions] + all_points, axis=0).astype(int)
 
     else:  # uniform
@@ -79,4 +97,42 @@ def get_contigous_blob_mask(edge_map, center=None):
         return all_blobs == np.argmax([(all_blobs == i).sum() for i in np.unique(all_blobs)])
     else:
         return all_blobs == all_blobs[center[0], center[1]]
+
+
+def simplify_label_map(label_map, approximation_params, erode_blobs=False):
+    new_label_map = -1 * np.ones_like(label_map)
+    for label in np.unique(label_map):
+        if label < 0:
+            continue
+        blob = (label_map == label)
+        if erode_blobs:
+            blob = binary_erosion(blob, iterations=1)
+
+        contours, _ = cv2.findContours(blob.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            if approximation_params[0] == "poly":
+                cnt = cv2.approxPolyDP(cnt, approximation_params[1] * cv2.arcLength(cnt, True), True)
+            elif approximation_params[0] == 'square':
+                cnt = np.int0(cv2.boxPoints(cv2.minAreaRect(np.array(cnt).astype(int))))
+            elif approximation_params[0] == 'fourier':
+                cnt = simplify_contour(cnt, approximation_params[1])
+            else:
+                raise ValueError("No such approximation method")
+
+            blob_map = np.zeros_like(label_map, dtype=np.uint8)
+            cv2.drawContours(blob_map, [cnt], -1, color=1, thickness=cv2.FILLED)
+            new_label_map[blob_map == 1] = label
+
+    return new_label_map
+
+
+def render_label_map_with_image(label_map, image, centers, output_path="mosaic.png"):
+    canvas = np.ones_like(image) * 127
+
+    for i in range(len(centers)):
+        label = label_map[centers[i][0], centers[i][1]]
+        color = image[centers[i][0], centers[i][1]]
+        canvas[label_map == label] = color
+
+    cv2.imwrite(output_path, canvas)
 

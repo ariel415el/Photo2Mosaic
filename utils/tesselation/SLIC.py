@@ -28,18 +28,10 @@ def simplify_blobs(label_map, centers):
 
     return new_label_map
 
-def get_max_dist(vecs):
-    x = vecs.astype(np.float32)
-    norm_sq = (x **2).sum(1)
-    dist_mat = norm_sq[:, None] + norm_sq[None, :]
-    dist_mat -= 2 * (x @ x.transpose())
-    return np.sqrt(dist_mat.max())
-
-def SLIC_superPixels(input_img, m, density_map, n_tiles, n_iters=10, search_area_factor=4, debug_dir=None):
+def SLIC_superPixels(input_img, density_map, n_tiles, n_iters=10, search_area_factor=4, debug_dir=None):
     """
     Creates SLIC superpixels using spacial and color distances
     @param input_img: image to segment
-    @param m: importance of space: smaller m means stricter color adherence
     @param density_map: unsigned integer map. The higher the number the denser will the cells in that area be
     @param density_map: unsigned integer map. The higher the number the denser will the cells in that area be
     @param n_tiles: approximately How many cells will there be
@@ -47,6 +39,7 @@ def SLIC_superPixels(input_img, m, density_map, n_tiles, n_iters=10, search_area
     @param search_area_factor: To reduce memory and compute the search around each cell is restricted to small sorounding
     @return:
     """
+    m = 1  # importance of space: smaller m means stricter color adherence
     h, w = input_img.shape[:2]
 
     centers = sample_centers((h, w), n_tiles, 'uniform', density_map)
@@ -91,8 +84,24 @@ def SLIC_superPixels(input_img, m, density_map, n_tiles, n_iters=10, search_area
     label_map = simplify_blobs(label_map, centers)
 
     if debug_dir:
-        plot_label_map(label_map, centers, centers, path=os.path.join(debug_dir, f'Connected_Clusters.png'))
-
-    overlay_rgb_edges(input_img, label_map, path=os.path.join(debug_dir, f'Overlayed_clusters.png'))
+        plot_label_map(label_map, centers, path=os.path.join(debug_dir, f'Connected_Clusters.png'))
+        overlay_rgb_edges(input_img, label_map, path=os.path.join(debug_dir, f'Overlayed_clusters.png'))
 
     return centers, label_map
+
+def scikit_SLICO(input_img, debug_dir):
+    from skimage.segmentation.slic_superpixels import slic
+    label_map = slic(input_img, n_segments=2000, slic_zero=True)
+    yx_field = np.indices(input_img.shape[:2]).transpose(1,2,0)
+    centers = []
+    for label in np.unique(label_map):
+        centers += [np.mean(yx_field[label_map == label], axis=0).astype(int)]
+
+    centers = np.array(centers)
+
+    if debug_dir:
+        plot_label_map(label_map, centers, path=os.path.join(debug_dir, f'Connected_Clusters.png'))
+        overlay_rgb_edges(input_img, label_map, path=os.path.join(debug_dir, f'Overlayed_clusters.png'))
+
+    return centers, label_map
+

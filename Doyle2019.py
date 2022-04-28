@@ -1,74 +1,37 @@
 import os.path
 from dataclasses import dataclass
 
-import torch
-
 from utils import *
-from utils.tesselation import SLIC
-from utils.tesselation.SLIC import SLIC_superPixels
+from utils.tesselation.SLIC import SLIC_superPixels, scikit_SLICO
+from utils.tesselation.common import render_label_map_with_image, simplify_label_map
 
 
-class SLICMosaicMaker:
+def make_slic_mosaics(config, outputs_dir):
     """
     Use SLIC super pixels to create a mosaic. This is a variation of the algorithm described in:
     'Automated pebble mosaic stylization of images'
     """
-    def __init__(self, configs):
-        self.config = configs
-        self.image, self.density_map = load_images(self.config.img_path, self.config.size_map_path, self.config.resize)
+    image, density_map = load_images(config.img_path, config.size_map_path, config.resize)
 
-    def make(self, outputs_dir):
-        os.makedirs(outputs_dir, exist_ok=True)
-        debug_dir = os.path.join(outputs_dir, "debug")
-        os.makedirs(debug_dir, exist_ok=True)
+    os.makedirs(outputs_dir, exist_ok=True)
+    debug_dir = os.path.join(outputs_dir, "debug")
+    os.makedirs(debug_dir, exist_ok=True)
 
-        centers, label_map = SLIC_superPixels(self.image, configs.m, self.density_map, configs.n_tiles, configs.n_iters, debug_dir=debug_dir)
+    # centers, label_map = SLIC_superPixels(self.image, self.density_map, configs.n_tiles, configs.n_iters, debug_dir=debug_dir)
+    centers, label_map = scikit_SLICO(image, debug_dir)
 
-        # write final mosaic
-        self._render_tiles(centers, label_map, path=os.path.join(outputs_dir, f'FinalMosaic.png'))
-
-    def _render_tiles(self, centers, vornoi_diagram,  path='mosaic.png'):
-        """
-        Render the mosaic: place oritented squares on a canvas with size defined by the alpha mask
-        """
-        mosaic = np.ones_like(self.image) * 127
-        coverage_map = np.zeros(self.image.shape[:2])
-        for i in range(len(centers)):
-            mask = (vornoi_diagram == i).astype(np.uint8)
-            contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-            for cnt in contours:
-                if self.config.contour_approx_method == 'poly':
-                    epsilon = self.config.contour_approx_param * cv2.arcLength(cnt, True)
-                    cnt = cv2.approxPolyDP(cnt, epsilon, True)
-                elif self.config.contour_approx_method == 'fourier':
-                    cnt = simplify_contour(cnt, self.config.contour_approx_param)
-
-                color = self.image[int(centers[i][0]), int(centers[i][1])]
-
-                mosaic = cv2.drawContours(mosaic, [cnt], -1, color=color.tolist(), thickness=cv2.FILLED)
-
-                # update overidden pixels
-                tmp = np.zeros_like(coverage_map)
-                cv2.drawContours(tmp, [cnt], -1, color=1, thickness=cv2.FILLED)
-                coverage_map += tmp
-
-        coverage_percentage = (coverage_map > 0).sum() / coverage_map.size * 100
-        overlap_percentage = (coverage_map > 1).sum() / coverage_map.size * 100
-        print(f"Coverage: {coverage_percentage:.3f}% Overlap:{overlap_percentage:.3f}%)")
-        cv2.imwrite(path, mosaic)
-
-        return coverage_percentage, overlap_percentage
+    for aprox_prams in [('poly', 0.05), ('fourier', 0.001), ('square', None)]:
+        label_map = simplify_label_map(label_map, aprox_prams, erode_blobs=False)
+        render_label_map_with_image(label_map, image, centers,
+                                    os.path.join(outputs_dir, f'FinalMosaic_{aprox_prams}.png'))
 
 @dataclass
 class MosaicConfig:
-    img_path: str = '/home/ariel/university/GPDM/images/my_images/ariel4.jpg'
-    size_map_path: str = None
-    resize: int = 906
-    n_tiles: int = 2000
+    img_path: str = 'images/images/turk.jpg'
+    size_map_path: str = 'images/masks/turk_mask.png'
+    resize: int = 1024
+    n_tiles: int = 3000
     n_iters: int = 10
-    m: int = 1                              # bigger m means stricter color adherence
-    contour_approx_method: str = "fourier"  # 'fourier'/'poly'
-    contour_approx_param: float = 0.05     # coefficient cutoff percent default=0.0001 / allowed error percent default=0.005
 
     def get_str(self):
         im_name = os.path.basename(os.path.splitext(self.img_path)[0])
@@ -76,8 +39,6 @@ class MosaicConfig:
 
 
 if __name__ == '__main__':
-    device: torch.device = torch.device("cpu")
     configs = MosaicConfig()
-    mosaic_maker = SLICMosaicMaker(configs)
-    mosaic_maker.make(os.path.join("outputs", "Doyle2019", configs.get_str()))
+    make_slic_mosaics(configs, os.path.join("outputs", "Doyle2019", configs.get_str()))
 

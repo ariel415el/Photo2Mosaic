@@ -13,7 +13,7 @@ def get_fixed_size_slice(center, interval_size, window_size):
     if center - s < 0:
         array_slice = slice(0, center + s)
     elif center > interval_size - s:
-        array_slice = slice(interval_size - s, interval_size)
+        array_slice = slice(center - s, interval_size)
     else:
         array_slice = slice(center - s, center + s)
     return array_slice
@@ -61,7 +61,7 @@ def replace_cells_with_squares(label_map, centers, direction_map, density_map, t
 
     return new_label_map
 
-def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_map, n_tiles, n_iters=10, search_area_factor=1, cut_by_edges=False, debug_dir=None):
+def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_map, n_tiles, n_iters=10, search_area_factor=2, cut_by_edges=False, debug_dir=None):
     """
     Creates a map of Vornoi Cells with oriented L1 distances considering an edge map
     @param edge_map: edges to avoid. avoidance is determined by cut_by_edges
@@ -101,8 +101,8 @@ def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_ma
             dist_map = dist_map * density_map[cy, cx]
 
             if cut_by_edges and edge_map[search_slice].any():
-                # mask = get_contigous_blob_mask(edge_map[search_slice], center=(cy - search_slice[0].start, cx - search_slice[1].start))
-                mask = get_contigous_blob_mask(edge_map[search_slice])
+                mask = get_contigous_blob_mask(edge_map[search_slice], center=(cy - search_slice[0].start, cx - search_slice[1].start))
+                # mask = get_contigous_blob_mask(edge_map[search_slice])
                 min_dist_map[c_idx][search_slice][mask] = dist_map[mask]
             else:
                 min_dist_map[c_idx][search_slice] = dist_map
@@ -111,7 +111,6 @@ def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_ma
         label_map[np.where(np.min(min_dist_map, axis=0) == np.inf)] = -1
 
         original_center_labels = label_map[centers[:, 0], centers[:, 1]]
-
         label_map[edge_map == 1] = -1
 
         # label_map = restrict_cell_shapes(label_map, centers)
@@ -119,8 +118,8 @@ def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_ma
 
         label_map[centers[:, 0], centers[:, 1]] = original_center_labels
 
-        # TODO can this happen now?
         remove_indices = []
+        # print(len(centers), len(np.unique(centers.reshape(-1, centers.shape[-1]), axis=0)))
         for c_idx in range(len(centers)):
             if (label_map == c_idx).any():
                 centers[c_idx] = np.round(np.mean(yx_field[label_map == c_idx], axis=0)).astype(int)
@@ -132,6 +131,7 @@ def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_ma
 
         if debug_dir:
             plot_label_map(label_map, centers, path=os.path.join(debug_dir, f'Clusters_{iter}.png'))
+
     if debug_dir:
         plot_label_map(label_map, centers, centers, path=os.path.join(debug_dir, f'Connected_Clusters.png'))
 
