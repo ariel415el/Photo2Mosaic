@@ -41,3 +41,26 @@ def simplify_contour(cnt, cutoff=0.01):
     return new_cnt
 
 
+class StructureTensor:
+    """Unweighted structure tensor. Helps understande the typical gradient directions in an neihberhood"""
+    def __init__(self, gray_image, t=0.5):
+        self.dx = cv2.Sobel(gray_image, cv2.CV_64F, 1, 0, ksize=5)
+        self.dy = cv2.Sobel(gray_image, cv2.CV_64F, 0, 1, ksize=5)
+        self.t = t
+
+    def get_structure_tensor(self, mask):
+        S = np.zeros((2,2))
+        S[0,0] =(self.dx[mask]**2).sum()
+        S[1, 1] =(self.dy[mask]**2).sum()
+        S[0, 1] = S[1, 0] = (self.dx[mask]*self.dy[mask]).sum()
+
+        w, v = np.linalg.eig(S)
+        order = w.argsort()[::-1]
+        w = w[order]
+        orientation_coherence = np.sqrt((w[0] - w[1]) / (w[0] + w[1] + np.finfo(float).eps))
+        if orientation_coherence >= self.t:
+            v = v.transpose(1, 0)
+            v = v[order]
+            return v
+
+        return None

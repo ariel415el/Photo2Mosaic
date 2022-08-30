@@ -45,8 +45,8 @@ def sample_centers(image_shape, N, init_mode, density_map=None):
         centers = np.concatenate([default_positions] + all_points, axis=0).astype(int)
 
     else:  # uniform
-        S = int(np.ceil(np.sqrt(h * w / N)))
-        y, x = np.meshgrid(np.arange(S // 2 - 1, h - S // 2 + 1, S), np.arange(S // 2 - 1, w - S // 2 + 1, S))
+        S = int(np.round(np.sqrt(h * w / N)))
+        y, x = np.meshgrid(np.arange(S // 2, h, S), np.arange(S // 2, w, S))
         centers = np.stack([y.flatten(), x.flatten()], axis=1)
 
     return centers
@@ -78,15 +78,13 @@ def smooth_centers_by_edges(centers, edge_map):
     for i in range(len(centers)):
         y, x = centers[i]
         radius = 1
-        if edge_map[y,x] != 1:
-            continue
-        while radius < 3:
-            neighberhood = edge_map[y-radius :y + radius + 1, x - radius:x + radius + 1]
-            if 1 in neighberhood:
+        if edge_map[y,x] == 1:
+            while radius < 3:
+                neighberhood = edge_map[y-radius :y + radius + 1, x - radius:x + radius + 1]
                 nwhere = np.where(neighberhood == 1)
                 centers[i] = nwhere[0][0], nwhere[0][1]
                 break
-            radius += 1
+                radius += 1
 
     return centers
 
@@ -100,6 +98,8 @@ def get_contigous_blob_mask(edge_map, center=None):
 
 
 def simplify_label_map(label_map, approximation_params, erode_blobs=False):
+    if approximation_params[0] is None:
+        return label_map
     new_label_map = -1 * np.ones_like(label_map)
     for label in np.unique(label_map):
         if label < 0:
@@ -116,11 +116,11 @@ def simplify_label_map(label_map, approximation_params, erode_blobs=False):
                 cnt = np.int0(cv2.boxPoints(cv2.minAreaRect(np.array(cnt).astype(int))))
             elif approximation_params[0] == 'fourier':
                 cnt = simplify_contour(cnt, approximation_params[1])
-            else:
-                raise ValueError("No such approximation method")
 
             blob_map = np.zeros_like(label_map, dtype=np.uint8)
             cv2.drawContours(blob_map, [cnt], -1, color=1, thickness=cv2.FILLED)
+            if approximation_params[0] == 'contour':
+                cv2.drawContours(blob_map, [cnt], 0, color=-1, thickness=1)
             new_label_map[blob_map == 1] = label
 
     return new_label_map
@@ -128,11 +128,12 @@ def simplify_label_map(label_map, approximation_params, erode_blobs=False):
 
 def render_label_map_with_image(label_map, image, centers, output_path="mosaic.png"):
     canvas = np.ones_like(image) * 127
-
+    n_edges_centers = 0
     for i in range(len(centers)):
         label = label_map[centers[i][0], centers[i][1]]
+        n_edges_centers + 1
         color = image[centers[i][0], centers[i][1]]
         canvas[label_map == label] = color
-
+    print(f"Got {n_edges_centers} edge centers")
     cv2.imwrite(output_path, canvas)
 

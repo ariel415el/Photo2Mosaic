@@ -1,3 +1,4 @@
+import argparse
 import os
 import random
 from dataclasses import dataclass
@@ -223,7 +224,7 @@ class MosaicTiler:
 
 
 def make_mosaic(config, outputs_dir):
-    image, density_map = utils.load_images(*config.get_image_configs())
+    image, density_map = utils.load_images(config.img_path, config.density_map_path, config.output_height)
     utils.create_output_dirs(outputs_dir)
 
     designer = MosaicDesigner(*config.get_design_configs())
@@ -235,49 +236,32 @@ def make_mosaic(config, outputs_dir):
     cv2.imwrite(os.path.join(outputs_dir, 'FinalMosaic.png'), mosaic)
 
 
-@dataclass
-class MosaicConfig:
-    # io
-    img_path: str = 'images/images/turk.jpg'
-    density_map_path: str = 'images/masks/turk_mask.png'
-    resize: int = 960
-
-    # Common
-    default_tile_size = 15
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Simulating Decorative Mosaics by DiBlasi 2005.')
+    # IO
+    parser.add_argument('img_path')
+    parser.add_argument('--edges_reference', default='auto', help='Infer edge map automaticaly or from a binary mask file (Specify a file path)')
+    parser.add_argument('--density_map_path', default=None, help='A binary mask specifying areas to tile with smaller tiles')
+    parser.add_argument('--output_height', default=512)
 
     # Design
-    edges_reference: str = 'images/edge_maps/turk_edges_2.png'   # path/image/mask compute edges from image itself or from the mask
-    aligned_background = False  # Reauires mask. mask == 2 is the foreground
-    extra_level_gap = 1  # the gap between level lines will be tile_size + levels_gap
-    
-    # Tiling
-    delete_area_factor:float = 2  # determines the size of the minimal gap between placed tiles (multiplies the tile diameter)
-    cement_color: int = 127
-    aspect_ratio: float = 1
+    parser.add_argument('--default_tile_size', default=12, help='Width of the tile used for the non dense area')
+    parser.add_argument('--aligned_background', action='store_true', default=False, help='Put aligned tiles in background. Reauires mask. mask == 2 is the foreground')
+    parser.add_argument('--extra_level_gap', default=1, help='The gap between level lines will be tile_size + levels_gap')
+    parser.add_argument('--delete_area_factor', default=2, help='Determines the size of the minimal gap between placed tiles (multiplies the tile diameter')
+    parser.add_argument('--cement_color', default=127, help='Canvas color')
+    parser.add_argument('--aspect_ratio', default=1, help='Defines the shape of the tiles')
+    parser.add_argument('--debug_freq', default=100, help='How often to dump debug images')
 
-    # debug
-    debug_freq = 1
+    configs = parser.parse_args()
+    configs.get_image_configs = lambda: (configs.img_path, configs.density_map_path, configs.output_height)
+    configs.get_design_configs = lambda: (configs.default_tile_size, configs.edges_reference, configs.aligned_background, configs.extra_level_gap)
+    configs.get_tiling_configs = lambda: (configs.default_tile_size, configs.delete_area_factor, configs.cement_color, configs.aspect_ratio, configs.debug_freq)
 
-    def get_image_configs(self):
-        return self.img_path, self.density_map_path, self.resize
+    im_name = os.path.basename(os.path.splitext(configs.img_path)[0])
+    configs.name = f"{im_name}_R-{configs.output_height}_N-{configs.default_tile_size}_dlta-{configs.delete_area_factor}"
+    configs.name += f"ER-{'EdgeMap' if os.path.exists(configs.edges_reference) else configs.edges_reference}"
+    configs.name += f"SM" if configs.density_map_path is not None else ''
+    configs.name += f"AB" if configs.aligned_background else ''
 
-    def get_design_configs(self):
-        return self.default_tile_size, self.edges_reference, self.aligned_background, self.extra_level_gap
-
-    def get_tiling_configs(self):
-        return self.default_tile_size, self.delete_area_factor, self.cement_color, self.aspect_ratio, self.debug_freq
-
-    def get_str(self):
-        im_name = os.path.basename(os.path.splitext(self.img_path)[0])
-        name = f"{im_name}_R-{self.resize}_T-{self.default_tile_size}_D-{self.delete_area_factor}"
-        name += f"ER-{'EdgeMap' if os.path.exists(self.edges_reference) else self.edges_reference}"
-        name += f"SM" if self.density_map_path is not None else ''
-        name += f"AB" if self.aligned_background else ''
-
-        return name
-
-if __name__ == '__main__':
-    np.random.seed(0)
-    random.seed(0)
-    mosaic_configs = MosaicConfig()
-    make_mosaic(mosaic_configs, os.path.join("outputs", "DiBlasi2005", mosaic_configs.get_str()))
+    make_mosaic(configs, os.path.join("outputs", "DiBlasi2005", configs.name))

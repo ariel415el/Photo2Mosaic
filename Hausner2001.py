@@ -1,5 +1,5 @@
 import os.path
-from dataclasses import dataclass
+import argparse
 
 from scipy.ndimage import binary_dilation
 
@@ -20,7 +20,7 @@ def get_avoidance_map(edges_map, dilation_iterations=0):
 class HausnerMosaicMaker:
     @staticmethod
     def _design_mosaic(img, density_map, config, debug_dir):
-        edge_map = get_edges_map(config.edges_reference, density_map)
+        edge_map = get_edges_map(config.edges_reference, img)
 
         avoidance_map = get_avoidance_map(edge_map, config.edge_avoidance_dilation)
 
@@ -80,7 +80,7 @@ class HausnerMosaicMaker:
         os.makedirs(outputs_dir, exist_ok=True)
         os.makedirs(debug_dir, exist_ok=True)
 
-        image, density_map = load_images(config.img_path, config.alpha_mask_path, config.resize)
+        image, density_map = load_images(config.img_path, config.density_map_path, config.output_height)
 
         h, w, _ = image.shape
         default_tile_size = int(config.delta * np.sqrt(h * w / config.n_tiles))
@@ -91,24 +91,22 @@ class HausnerMosaicMaker:
         HausnerMosaicMaker._render_tiles(image, density_map, centers, oritentations, default_tile_size, path=os.path.join(outputs_dir, f'FinalMosaic.png'))
 
 
-@dataclass
-class MosaicConfig:
-    img_path: str = 'images/images/turk.jpg'
-    alpha_mask_path: str = 'images/masks/turk_mask.png'
-    edges_reference: str = 'images/edge_maps/turk_edges.png'   # if path: compute edges from image itself or from the mask. else: Canny edge detection
-    resize: int = 512
-    n_tiles: int = 1500
-    n_iters: int = 10
-    delta: float = 0.99  # Direction field variation level
-    edge_avoidance_dilation: int = 2
-    init_mode: str = 'random' # random / uniform
-
-    def get_str(self):
-        im_name = os.path.basename(os.path.splitext(self.img_path)[0])
-        return f"{im_name}_R-{self.resize}_N-{self.n_tiles}_dlta-{self.delta}"
-
-
 if __name__ == '__main__':
-    configs = MosaicConfig()
-    mosaic_maker = HausnerMosaicMaker.make_mosaic(configs, os.path.join("outputs", "Hausner2001", configs.get_str()))
+    parser = argparse.ArgumentParser(description='Simulating Decorative Mosaics by Hausner 2001.')
+    parser.add_argument('img_path')
+    parser.add_argument('--edges_reference', default='auto', help='Infer edge map automaticaly or from a binary mask file (Specify a file path)')
+    parser.add_argument('--density_map_path', default=None, help='A binary mask specifying areas to tile with smaller tiles')
+    parser.add_argument('--output_height', default=512)
+    parser.add_argument('--n_tiles', default=1024)
+    parser.add_argument('--n_iters', default=20, help='Number of iterations for the tesselation algorithm')
+    parser.add_argument('--init_mode', default='random', help='Initialization mode of the tesseslation algorithm', choices=['random', 'uniform'])
+    parser.add_argument('--delta', default=0.85, help='Factors the relative size of the tiles')
+    parser.add_argument('--edge_avoidance_dilation', default=2, help='Stricter restriction on puting tiles over edges')
+
+    configs = parser.parse_args()
+    im_name = os.path.basename(os.path.splitext(configs.img_path)[0])
+    configs.name = f"{im_name}_R-{configs.output_height}_N-{configs.n_tiles}_dlta-{configs.delta}"
+
+    mosaic_maker = HausnerMosaicMaker.make_mosaic(configs, os.path.join("outputs", "Hausner2001", configs.name))
+
 

@@ -4,7 +4,8 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from utils.tesselation.common import sample_centers, ROTATION_MATRICES, get_contigous_blob_mask, smooth_centers_by_edges
+from utils.tesselation.common import sample_centers, ROTATION_MATRICES, get_contigous_blob_mask, \
+    smooth_centers_by_edges, simplify_label_map
 from utils import plot_label_map, get_rotation_matrix
 
 
@@ -80,8 +81,8 @@ def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_ma
 
     yx_field = np.indices((h,w)).transpose(1,2,0)
 
-    S = int(np.ceil(np.sqrt(h * w / n_tiles))) * search_area_factor
-
+    S = int(np.ceil(np.sqrt(h * w / n_tiles)))
+    S_A = S * search_area_factor
     pbar = tqdm(range(n_iters))
     for iter in pbar:
         pbar.set_description(f"N-centers: {len(centers)}")
@@ -93,7 +94,7 @@ def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_ma
             basis1 = orientation @ ROTATION_MATRICES[-45]
             basis2 = orientation @ ROTATION_MATRICES[45]
 
-            search_slice = tuple([get_fixed_size_slice(cy, h, S), get_fixed_size_slice(cx, w, S)])
+            search_slice = tuple([get_fixed_size_slice(cy, h, S_A), get_fixed_size_slice(cx, w, S_A)])
 
             diffs = yx_field[search_slice] - yx_field[cy, cx]
 
@@ -111,23 +112,29 @@ def oriented_tesselation_with_edge_avoidance(edge_map, direction_map, density_ma
         label_map[np.where(np.min(min_dist_map, axis=0) == np.inf)] = -1
 
         original_center_labels = label_map[centers[:, 0], centers[:, 1]]
-        label_map[edge_map == 1] = -1
+        # label_map[edge_map == 1] = -1
 
-        # label_map = restrict_cell_shapes(label_map, centers)
-        # label_map = replace_cells_with_squares(label_map, centers, direction_map, density_map, tile_size=S//search_area_factor)
+        # if iter > 3:
+        #     simplify_label_map(label_map, ("poly", 0.05), erode_blobs=False)
+        #     label_map = restrict_cell_shapes(label_map, centers)
+        #     label_map = replace_cells_with_squares(label_map, centers, direction_map, density_map, tile_size=S)
 
         label_map[centers[:, 0], centers[:, 1]] = original_center_labels
 
+        # Recenter clusters and delete empty ones
         remove_indices = []
-        # print(len(centers), len(np.unique(centers.reshape(-1, centers.shape[-1]), axis=0)))
         for c_idx in range(len(centers)):
             if (label_map == c_idx).any():
                 centers[c_idx] = np.round(np.mean(yx_field[label_map == c_idx], axis=0)).astype(int)
             else:
                 remove_indices.append(c_idx)
 
+        # Update removed centers
         centers = np.delete(centers, remove_indices, axis=0)
-        centers = smooth_centers_by_edges(centers, edge_map)
+        # centers = smooth_centers_by_edges(centers, edge_map)
+        if remove_indices:
+            for c_idx in remove_indices:
+                label_map[label_map >= c_idx] -= 1
 
         if debug_dir:
             plot_label_map(label_map, centers, path=os.path.join(debug_dir, f'Clusters_{iter}.png'))
