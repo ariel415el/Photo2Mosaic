@@ -1,7 +1,7 @@
 # Photo2Mosaic
 Implementations and development of methods for creating a classical decorative stone mosaic from an image.
 The emhphasis of the implementations here was on minimizing the use of non-square tiles so that the output can be used 
-as a guidance for easy physical mosaic.
+as a guidance for building actual physical mosaics.
 
 # Simulating Decorative Mosaics, (Hausner 2001)
 An iterative algorithm where the image is split into ceteroid Vornoi cells which are pushed away from edges to 
