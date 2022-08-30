@@ -3,7 +3,8 @@ Implementations and development of methods for creating a classical decorative s
 The emhphasis of the implementations here was on minimizing the use of non-square tiles so that the output can be used 
 as a guidance for building actual physical mosaics.
 
-# Simulating Decorative Mosaics, (Hausner 2001)
+## [Simulating Decorative Mosaics, (Hausner 2001)](https://dl.acm.org/doi/abs/10.1145/383259.383327)
+
 An iterative algorithm where the image is split into ceteroid Vornoi cells which are pushed away from edges to 
 enhance the effect of edges. oriented color squares are then palced at the center of each cell.
 
@@ -17,7 +18,7 @@ Input image             |                     Output
 <img src="data/images/turk.jpg" width="300"/> | <img src="readme_images/Hausner2001.png" width="300"/> | 
 
 
-# Artificial mosaics, (Di Blasi, Gallo 2005)
+## [Artificial mosaics, (Di Blasi, Gallo 2005)](https://link.springer.com/content/pdf/10.1007/s00371-005-0292-4.pdf)
 In this parallel lines to the edges are computed and tiles are put on them. 
 In the original implementation tiles are overriding each other and then cut to fit the gaps. 
 In this implementation the gap is not filled in order to avoid using non-square tiles.
@@ -31,7 +32,7 @@ Input image             |                         Output                        
 <img src="data/images/turk.jpg" width="300"/>  | <img src="readme_images/Diblasi2005.png" width="300"/> 
 
 
-# Automated pebble mosaic stylization of images, (Doyle 2019)
+## [Automated pebble mosaic stylization of images, (Doyle 2019)](https://link.springer.com/content/pdf/10.1007/s41095-019-0129-0.pdf)
 This method tesselate the image into gradient oriented elipse using a variation of SLIC super pixels.
 Then it smoothens the cells by cuting fourier features of the contours. Cells are then filled with underlying color 
 image but with a synthetic pebble texture.
@@ -47,7 +48,7 @@ Input image             |                         Output                        
 :----------------------:|:------------------------------------------------------:|
 <img src="data/images/turk.jpg" width="300"/>  | <img src="readme_images/Doyle2019.png" width="300"/> 
 
-# My method:
+## Methods synthesis:
 I combined the most sucessfull ideas from the three above methods.
 The image is tessealted using edge avoiding oriented Vornoi cells like Hausner2001 but the edges are now all the level lines like in 
 Di Blasi 2005. I then smoothen the cells using different methods like in Doyle 2019
@@ -60,7 +61,7 @@ Input image             |                    Output  (thick contour)            
 :----------------------:|:-------------------------------------------------------------:|:----------------------------------------------------------:|
 <img src="data/images/turk.jpg" width="300"/>  | <img src="readme_images/MyMethod_(contour).png" width="300"/> | <img src="readme_images/MyMethod_(poly).png" width="300"/> |
 
-# GPNN tiling
+## GPNN tiling
 I used the style transfer capabilities of [GPNN](https://www.wisdom.weizmann.ac.il/~vision/gpnn/) to create a 
 mosaic by tiling the input image with patches from areal mosaic
 
