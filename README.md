@@ -67,11 +67,11 @@ mosaic by tiling the input image with patches from areal mosaic
 
 
 ```
-$ python3 GPN_tiling.py data/images/turk.jpg data/mosaics/File-4_crop.png 35 --augment_reference
+$ python3 GPNN_tiling.py data/images/turk.jpg data/mosaics/File-4_crop.png 35 --augment_reference
 ```
 
 ```
-$ python3 GPN_tiling.py data/images/turk.jpg data/mosaics/mosaic7.jpg 35
+$ python3 GPNN_tiling.py data/images/turk.jpg data/mosaics/mosaic7.jpg 35
 ```
 
 |          Input image                         |     Reference 1 (augmentation)      |                       Referenc 2                       |
